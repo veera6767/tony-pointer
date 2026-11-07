@@ -1,0 +1,9 @@
+mediapipe>=0.10.14
+opencv-python>=4.9.0.80
+PySide6>=6.6.0
+numpy>=1.26.0
+keyboard>=0.13.5
+pyinstaller>=6.5.0
+psutil>=5.9.0
+pywin32>=306
+requests>=2.31.0
