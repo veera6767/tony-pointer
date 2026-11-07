@@ -1,8 +1,14 @@
 node_modules/
 build/
 dist/
+pointer_v/build/
+pointer_v/dist/
+installers/Output/
 coverage/
 .DS_Store
 *.log
 .env*
 !.env.example
+__pycache__/
+*.pyc
+.pytest_cache/

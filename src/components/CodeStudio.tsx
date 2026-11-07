@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { TONY_POINTER_FILES, CodeFile } from '../data/codeFiles';
+import { POINTER_V_FILES, CodeFile } from '../data/codeFiles';
 import { Download, Copy, Check, FileCode, Terminal, Sparkles, FolderArchive } from 'lucide-react';
 import JSZip from 'jszip';
 
 export const CodeStudio: React.FC = () => {
-  const [selectedFile, setSelectedFile] = useState<CodeFile>(TONY_POINTER_FILES[0]);
+  const [selectedFile, setSelectedFile] = useState<CodeFile>(POINTER_V_FILES[0]);
   const [copied, setCopied] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
 
@@ -19,10 +19,10 @@ export const CodeStudio: React.FC = () => {
       setIsZipping(true);
       const zip = new JSZip();
 
-      // Add all project files into tony_pointer folder in zip
-      const folder = zip.folder("tony_pointer");
+      // Add all project files into pointer_v folder in zip
+      const folder = zip.folder("pointer_v");
       if (folder) {
-        TONY_POINTER_FILES.forEach((f) => {
+        POINTER_V_FILES.forEach((f) => {
           folder.file(f.name, f.content);
         });
       }
@@ -31,7 +31,7 @@ export const CodeStudio: React.FC = () => {
       const url = URL.createObjectURL(content);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "TonyPointer-Windows-App.zip";
+      link.download = "PointerV-Source.zip";
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -53,10 +53,10 @@ export const CodeStudio: React.FC = () => {
           </div>
           <div>
             <h2 className="text-sm font-semibold text-slate-100 font-hud tracking-wide">
-              TONY POINTER DESKTOP SOURCE REPOSITORY
+              POINTER V DESKTOP SOURCE REPOSITORY
             </h2>
             <p className="text-xs text-slate-400">
-              12 pristine modular Python 3.11 files · Win32 SendInput · MediaPipe Tasks API
+              Clean modular Python 3.12 architecture · Win32 SendInput · MediaPipe Tasks API
             </p>
           </div>
         </div>
@@ -78,7 +78,7 @@ export const CodeStudio: React.FC = () => {
           <div className="px-2 py-1 text-[11px] font-mono text-slate-500 tracking-wider">
             PROJECT MODULES
           </div>
-          {TONY_POINTER_FILES.map((file) => {
+          {POINTER_V_FILES.map((file) => {
             const isSelected = selectedFile.name === file.name;
             return (
               <button

@@ -211,7 +211,7 @@ export const VirtualPcScreen: React.FC<VirtualPcScreenProps> = ({
             <div className="flex items-center justify-between px-3 py-1.5 bg-slate-950 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <Paintbrush className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="text-xs font-semibold text-slate-200">Tony Creative Paint · One Euro Stabilized</span>
+                <span className="text-xs font-semibold text-slate-200">Pointer V Creative Paint · One Euro Stabilized</span>
               </div>
               <button
                 onClick={() => setOpenWindow(null)}
@@ -286,7 +286,7 @@ export const VirtualPcScreen: React.FC<VirtualPcScreenProps> = ({
               </button>
             </div>
             <div className="flex-1 p-3 font-mono text-xs text-slate-300 leading-relaxed overflow-y-auto">
-              Tony Pointer gesture calibration checklist:<br /><br />
+              Pointer V gesture calibration checklist:<br /><br />
               1. Double-tap in the air to execute double click.<br />
               2. Keep open palm to pause cursor tracking.<br />
               3. Hold 2 fingers to open this context menu.<br />
@@ -310,7 +310,7 @@ export const VirtualPcScreen: React.FC<VirtualPcScreenProps> = ({
           </div>
         )}
 
-        {/* Simulated Tony Pointer Reticle Overlay */}
+        {/* Simulated Pointer V Reticle Overlay */}
         <div
           style={{
             left: `${cursorPos.x}%`,

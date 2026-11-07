@@ -21,19 +21,19 @@ export const SetupGuide: React.FC = () => {
       title: "2. Install Python Dependencies",
       description: "Install MediaPipe Tasks, OpenCV, PySide6, Win32 bindings, and hotkey drivers:",
       command: "pip install -r requirements.txt",
-      notes: "On first launch, Tony Pointer will automatically download the Google MediaPipe hand_landmarker.task model."
+      notes: "Pointer V comes pre-bundled with hand_landmarker.task model, fonts, icons, and sounds."
     },
     {
-      title: "3. Run Tony Pointer",
-      description: "Start the Stark Industries holographic desktop application:",
+      title: "3. Run Pointer V",
+      description: "Start the native Windows gesture controller application:",
       command: "python main.py",
-      notes: "The main window will appear with live camera preview, telemetry, and Arc-Reactor power button."
+      notes: "The main window will appear with live camera preview, telemetry, and quick settings."
     },
     {
-      title: "4. Build Standalone Single-File .EXE",
-      description: "Compile Tony Pointer into a portable Windows executable that runs without Python installed:",
+      title: "4. Build Standalone .EXE & Installer",
+      description: "Compile Pointer V into a standalone executable or Inno Setup installer package:",
       command: "build_exe.bat",
-      notes: "The standalone executable will be generated at dist\\TonyPointer.exe."
+      notes: "The standalone executable is generated at dist\\PointerV\\PointerV.exe."
     }
   ];
 
@@ -98,7 +98,7 @@ export const SetupGuide: React.FC = () => {
             MULTI-MONITOR VIRTUAL DESKTOP
           </div>
           <p className="text-xs text-slate-400 leading-relaxed">
-            Tony Pointer queries <code className="text-cyan-300 font-mono">SM_XVIRTUALSCREEN</code> and <code className="text-cyan-300 font-mono">SM_CXVIRTUALSCREEN</code> so cursor coordinates traverse dual and triple monitors seamlessly.
+            Pointer V queries <code className="text-cyan-300 font-mono">SM_XVIRTUALSCREEN</code> and <code className="text-cyan-300 font-mono">SM_CXVIRTUALSCREEN</code> so cursor coordinates traverse dual and triple monitors seamlessly.
           </p>
         </div>
 

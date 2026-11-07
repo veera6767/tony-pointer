@@ -1,6 +1,6 @@
 {
-  "name": "Tony Pointer - Hand Gesture PC Controller",
-  "description": "Windows desktop app and interactive gesture simulator for controlling your PC with webcam hand tracking, Iron-Man HUD, and Win32 SendInput.",
+  "name": "Pointer V - Hand Gesture PC Controller",
+  "description": "Windows desktop app and interactive gesture simulator for controlling your PC in the air with one hand using webcam tracking and Win32 SendInput.",
   "requestFramePermissions": [
     "camera"
   ],

@@ -150,7 +150,7 @@ export const WebcamSimulator: React.FC<WebcamSimulatorProps> = ({
       ctx.strokeRect(ax1, ay1, aw, ah);
       ctx.setLineDash([]);
 
-      // Corner Brackets (Iron-Man HUD styling)
+      // Corner Brackets (Pointer V Reticle styling)
       const cLen = Math.min(22, aw / 8);
       ctx.strokeStyle = '#00e5ff';
       ctx.lineWidth = 2.5;
@@ -250,7 +250,7 @@ export const WebcamSimulator: React.FC<WebcamSimulatorProps> = ({
           }
         });
 
-        // Landmark 8: Index Fingertip - Primary Stark Reticle!
+        // Landmark 8: Index Fingertip - Cursor Reticle
         const reticleColor = brushLocked ? '#ff5722' : '#00e5ff';
         ctx.strokeStyle = reticleColor;
         ctx.fillStyle = brushLocked ? 'rgba(255, 87, 34, 0.8)' : 'rgba(0, 229, 255, 0.2)';

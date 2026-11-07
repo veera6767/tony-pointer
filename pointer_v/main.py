@@ -1,0 +1,715 @@
+"""
+Pointer V - Main Application Entrypoint & System Coordinator
+Launches the PySide6 Application, manages background vision worker threads,
+hooks system tray, registers global OS hotkeys, coordinates MediaPipe tracking
+with Win32 SendInput mouse/keyboard dispatch, and delivers thread-safe UI signals.
+"""
+
+import atexit
+import ctypes
+import os
+import sys
+import threading
+import time
+from pathlib import Path
+from typing import Optional
+
+import keyboard
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtGui import QAction, QIcon, QPainter, QPixmap, QColor
+from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QMessageBox
+
+from camera import CameraStream, draw_hud_landmarks
+from filters import OneEuroFilter2D
+from finger_taps import FingerTapDetector
+from gestures import GestureAction, GestureEngine
+from keyboard_layout import KeyboardLayoutManager, KeyboardWindow, Zone
+from keyboard_out import ModifierState, Win32KeyboardOutput
+from keyboard_ui import FloatingAirKeyboardWidget
+from logger import log_input_event, setup_logger
+from mode_manager import AppMode, ModeManager
+from mouse import MouseController
+from overlay import CursorOverlayWindow
+from preview import CameraPreviewOverlay
+from recorder import LandmarkRecorder
+from settings import SettingsManager
+from sound import SoundManager
+from tracker import HandTracker
+from ui.main_window import MainWindow
+from version import (
+    APP_NAME, APP_SHORT_NAME, APP_TAGLINE, MUTEX_NAME, __version__
+)
+
+
+class WorkerSignals(QObject):
+    """Thread-safe Qt signal bridge between background vision loop and main Qt UI."""
+    cursor_updated = Signal(int, int, str, float)
+    click_animated = Signal(bool)
+    frame_updated = Signal(object, float)
+    keyboard_updated = Signal(object, int, int, object, bool)
+    key_typed = Signal(str, str)
+    telemetry_updated = Signal()
+    tray_notification_requested = Signal(str, str)
+
+
+class PointerVApp(QObject):
+    """Coordinates hardware capture, gesture tracking, overlays, mouse input, and air keyboard."""
+
+    def __init__(self, app: QApplication):
+        super().__init__()
+        self.app = app
+        self.logger = setup_logger()
+        self.settings_manager = SettingsManager()
+        self.settings = self.settings_manager.config
+
+        # 1. Hardware & Mouse Subsystems
+        self.mouse = MouseController()
+        self.target_bounds = self.mouse.get_target_bounds(
+            getattr(self.settings.monitors, "monitor_index", -1)
+        )
+
+        # One Euro Filter for 2D cursor mapping
+        self.filter = OneEuroFilter2D(
+            min_cutoff=self.settings.one_euro.min_cutoff,
+            beta=self.settings.one_euro.beta,
+        )
+
+        # MediaPipe Tasks Hand Tracker
+        self.tracker = HandTracker()
+
+        # Gesture Detection Engine
+        self.gesture_engine = GestureEngine(self.settings)
+
+        # 2. Keyboard & Input Subsystems
+        self.layout_manager = KeyboardLayoutManager()
+        self.keyboard_out = Win32KeyboardOutput()
+        self.finger_tap_detector = FingerTapDetector(self.settings)
+        self.mode_manager = ModeManager(self.settings, self.layout_manager)
+
+        # Developer stream recorder
+        self.recorder = LandmarkRecorder()
+
+        # Audio feedback manager
+        self.sound = SoundManager(self.settings)
+
+        # Threaded Camera Capture
+        self.camera = CameraStream(
+            camera_index=self.settings.camera_index,
+            width=self.settings.camera_width,
+            height=self.settings.camera_height,
+            target_fps=self.settings.target_fps,
+            camera_name=self.settings.camera_name,
+        )
+
+        # 3. Thread-safe UI Signal Bridge
+        self.signals = WorkerSignals()
+
+        # 4. Overlays & Windows
+        self.cursor_overlay = CursorOverlayWindow(self.settings)
+        self.camera_overlay = CameraPreviewOverlay(self.settings)
+        self.keyboard_overlay = FloatingAirKeyboardWidget(self.settings, self.layout_manager)
+
+        # Connect signals directly to UI slots on Main Thread
+        self.signals.cursor_updated.connect(self.cursor_overlay.update_position)
+        self.signals.click_animated.connect(self.cursor_overlay.trigger_click_anim)
+        self.signals.frame_updated.connect(self.camera_overlay.update_frame)
+        self.signals.keyboard_updated.connect(self.keyboard_overlay.update_state)
+        self.signals.key_typed.connect(self.keyboard_overlay.trigger_key_flash)
+        self.signals.tray_notification_requested.connect(self._show_tray_message)
+
+        # Master Mode Toggle
+        self.is_active = False
+        self.paint_profile_active = False
+
+        # Shared Status Telemetry
+        self.telemetry = {
+            "fps": 0.0,
+            "latency_ms": 0.0,
+            "mode": "POINTER",
+            "pose": "UNKNOWN",
+            "action": "NONE",
+            "status_text": "OFFLINE",
+            "brush_locked": False,
+            "foreground_app": "DESKTOP",
+            "raw_hand": None,
+            "kb_zone": "MAIN",
+            "kb_row": 3,
+            "kb_win_keys": ["A", "S", "D", "F"],
+            "curls": {},
+            "is_paused": False,
+            "camera_connected": True,
+            "is_low_light": False,
+            "is_over_exposed": False,
+            "camera_brightness": 128.0,
+            "monitor_count": len(self.mouse.monitors),
+        }
+        self.latest_vis_frame = None
+
+        # 5. Main GUI Window
+        self.main_window = MainWindow(
+            settings_manager=self.settings_manager,
+            mouse_controller=self.mouse,
+            recorder=self.recorder,
+            get_status_fn=lambda: self.telemetry,
+            get_frame_fn=lambda: self.latest_vis_frame,
+        )
+        self.main_window.toggle_mode_requested.connect(self.set_active)
+        self.main_window.toggle_keyboard_requested.connect(self._toggle_keyboard_mode)
+        self.main_window.toggle_paint_requested.connect(self._toggle_paint_mode)
+        self.main_window.toggle_pause_requested.connect(self._toggle_pause)
+        self.main_window.settings_changed.connect(self._on_settings_reloaded)
+        self.main_window.camera_device_changed.connect(self._on_camera_device_changed)
+        self.main_window.fps_cap_changed.connect(self._on_fps_cap_changed)
+        self.main_window.monitor_changed.connect(self._on_monitor_changed)
+
+        # 6. System Tray Integration
+        self._setup_tray()
+
+        # 7. Global Hotkeys
+        self._setup_hotkeys()
+
+        # 8. Register Emergency atexit handler
+        atexit.register(self.emergency_release_all)
+
+        # 9. Start Camera Stream
+        self.camera.start()
+
+        # 10. Background Vision Processing Loop
+        self.running = True
+        self.worker_thread = threading.Thread(target=self._processing_loop, daemon=True)
+        self.worker_thread.start()
+
+        # 11. Foreground Window Inspector Timer (every 500ms)
+        self.fg_timer = QTimer(self)
+        self.fg_timer.timeout.connect(self._check_foreground_window)
+        self.fg_timer.start(500)
+
+        # Show main window or start minimized
+        if not self.settings.start_minimized:
+            self.main_window.show()
+
+    def _get_tray_icon(self) -> QIcon:
+        """Selects tray icon matching current mode and paused state."""
+        icons_dir = Path(__file__).resolve().parent / "assets" / "icons"
+        if not self.is_active:
+            p = icons_dir / "tray_off.png"
+        elif self.mode_manager.is_paused:
+            p = icons_dir / "tray_paused.png"
+        elif self.mode_manager.mode == AppMode.KEYBOARD:
+            p = icons_dir / "tray_keyboard.png"
+        elif self.mode_manager.mode == AppMode.PAINT or self.paint_profile_active:
+            p = icons_dir / "tray_paint.png"
+        else:
+            p = icons_dir / "tray_pointer.png"
+
+        if p.exists():
+            return QIcon(str(p))
+
+        # Fallback dynamic pixmap
+        pix = QPixmap(32, 32)
+        pix.fill(Qt.transparent)
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setBrush(QColor(47, 123, 255 if self.is_active else 100, 116, 139))
+        painter.drawEllipse(2, 2, 28, 28)
+        painter.end()
+        return QIcon(pix)
+
+    def _setup_tray(self):
+        self.tray = QSystemTrayIcon(self)
+        self.tray.setIcon(self._get_tray_icon())
+        self.tray.setToolTip(f"{APP_NAME} - Hand Gesture PC Controller")
+
+        menu = QMenu()
+        self.action_toggle = QAction(f"{APP_NAME}: OFF", self)
+        self.action_toggle.triggered.connect(self._toggle_from_tray)
+        menu.addAction(self.action_toggle)
+
+        self.action_pause = QAction("Pause Tracking: OFF", self)
+        self.action_pause.triggered.connect(self._toggle_pause)
+        menu.addAction(self.action_pause)
+
+        self.action_kb = QAction("Air Keyboard: OFF", self)
+        self.action_kb.triggered.connect(self._toggle_keyboard_mode)
+        menu.addAction(self.action_kb)
+
+        self.action_paint = QAction("Paint Mode: OFF", self)
+        self.action_paint.triggered.connect(self._toggle_paint_mode)
+        menu.addAction(self.action_paint)
+
+        menu.addSeparator()
+        action_show = QAction("Open Control Center", self)
+        action_show.triggered.connect(self.main_window.showNormal)
+        menu.addAction(action_show)
+
+        action_quit = QAction(f"Exit {APP_NAME}", self)
+        action_quit.triggered.connect(self.shutdown)
+        menu.addAction(action_quit)
+
+        self.tray.setContextMenu(menu)
+        self.tray.activated.connect(self._on_tray_activated)
+        self.tray.show()
+
+    def _update_tray_visuals(self):
+        self.tray.setIcon(self._get_tray_icon())
+        self.action_toggle.setText(f"{APP_NAME}: {'ON' if self.is_active else 'OFF'}")
+        self.action_pause.setText(f"Pause Tracking: {'PAUSED' if self.mode_manager.is_paused else 'RESUMED'}")
+        self.action_kb.setText(f"Air Keyboard: {'ON' if self.mode_manager.mode == AppMode.KEYBOARD else 'OFF'}")
+        self.action_paint.setText(f"Paint Mode: {'ON' if self.paint_profile_active else 'OFF'}")
+
+    def _on_tray_activated(self, reason):
+        if reason == QSystemTrayIcon.DoubleClick:
+            self.main_window.showNormal()
+            self.main_window.activateWindow()
+
+    def _toggle_from_tray(self):
+        self.set_active(not self.is_active)
+
+    def _toggle_pause(self):
+        new_paused = self.mode_manager.toggle_pause()
+        if new_paused:
+            self.emergency_release_all()
+            self.sound.warning()
+            self.tray.showMessage(APP_NAME, "Tracking Paused (Output suppressed)", QSystemTrayIcon.Information, 1500)
+        else:
+            self.sound.lock()
+            self.tray.showMessage(APP_NAME, "Tracking Resumed", QSystemTrayIcon.Information, 1500)
+        self._update_tray_visuals()
+
+    def _toggle_keyboard_mode(self):
+        new_active = self.mode_manager.toggle_keyboard_mode()
+        self._update_keyboard_visibility(new_active)
+        self._update_tray_visuals()
+
+    def _setup_hotkeys(self):
+        try:
+            keyboard.add_hotkey(self.settings.hotkey_toggle, lambda: self.set_active(not self.is_active))
+            keyboard.add_hotkey(self.settings.keyboard.hotkey_keyboard, self._toggle_keyboard_mode)
+            keyboard.add_hotkey(self.settings.keyboard.hotkey_zone_toggle, self._toggle_keyboard_zone)
+            keyboard.add_hotkey(self.settings.hotkey_paint, self._toggle_paint_mode)
+            keyboard.add_hotkey(getattr(self.settings, "hotkey_pause", "ctrl+alt+space"), self._toggle_pause)
+            keyboard.add_hotkey("esc", self._emergency_unlock)
+        except Exception as e:
+            self.logger.warning(f"Could not bind global hotkeys: {e}")
+
+    def _toggle_keyboard_zone(self):
+        if self.mode_manager.mode == AppMode.KEYBOARD:
+            self.mode_manager.toggle_zone()
+            self.sound.mode_change()
+
+    def _emergency_unlock(self):
+        """Immediate safety release on pressing Esc."""
+        self.emergency_release_all()
+        if self.mode_manager.mode == AppMode.KEYBOARD:
+            self.mode_manager.mode = AppMode.POINTER
+            self._update_keyboard_visibility(False)
+        self.sound.unlock()
+        self._update_tray_visuals()
+
+    def emergency_release_all(self):
+        """Releases every held mouse button and held/sticky keyboard modifier."""
+        try:
+            self.mouse.emergency_release()
+            self.keyboard_out.release_all_modifiers()
+            self.gesture_engine.brush_locked = False
+        except Exception as e:
+            pass
+
+    def _toggle_paint_mode(self):
+        self.paint_profile_active = not self.paint_profile_active
+        self._apply_filter_profile()
+        if self.paint_profile_active:
+            self.sound.lock()
+        else:
+            self.sound.unlock()
+        self._update_tray_visuals()
+
+    def _apply_filter_profile(self):
+        if self.paint_profile_active:
+            self.filter.update_params(
+                min_cutoff=self.settings.paint.min_cutoff,
+                beta=self.settings.paint.beta,
+            )
+        else:
+            self.filter.update_params(
+                min_cutoff=self.settings.one_euro.min_cutoff,
+                beta=self.settings.one_euro.beta,
+            )
+
+    def _check_foreground_window(self):
+        """Detects focused application name, password fields, and fullscreen game mode."""
+        proc = self.mouse.get_active_process_name()
+        title = self.mouse.get_active_window_title().lower()
+
+        if proc:
+            self.telemetry["foreground_app"] = proc
+
+            # Auto-paint mode detection
+            if self.settings.paint.auto_detect:
+                is_paint_app = any(app in proc for app in self.settings.paint.active_apps)
+                if is_paint_app != self.paint_profile_active:
+                    self.paint_profile_active = is_paint_app
+                    self._apply_filter_profile()
+                    self._update_tray_visuals()
+
+            # Game mode fullscreen detection
+            if getattr(self.settings.gestures, "game_mode_enabled", False):
+                is_fullscreen = self.mouse.is_fullscreen_app_active()
+                is_excluded = any(ex in proc for ex in getattr(self.settings.gestures, "game_mode_exclusions", []))
+                if is_fullscreen and not is_excluded and not self.mode_manager.is_paused:
+                    self.mode_manager.toggle_pause(force_state=True)
+                    self._show_tray_message(APP_NAME, f"Game Mode: Tracking auto-paused for {proc}")
+
+            # Privacy Password Field Shield
+            if getattr(self.settings.privacy, "auto_hide_passwords", True):
+                pw_keywords = ("password", "login", "credential", "keepass", "bitwarden", "1password", "authenticator")
+                if any(kw in title for kw in pw_keywords):
+                    self.keyboard_overlay.clear_last_typed()
+        else:
+            self.telemetry["foreground_app"] = "DESKTOP"
+
+    def set_active(self, active: bool):
+        """Turns Pointer V ON or OFF."""
+        self.is_active = active
+        self.main_window.set_system_active(active)
+        self._update_tray_visuals()
+
+        if active:
+            self.sound.lock()
+            self.main_window.hide()
+            self.cursor_overlay.show()
+            if self.settings.overlay.preview_visible:
+                self.camera_overlay.show()
+            self.tray.showMessage(
+                f"{APP_NAME} Engaged",
+                "Webcam hand control is active. Press Ctrl+Alt+T anytime to toggle.",
+                QSystemTrayIcon.Information,
+                2000,
+            )
+        else:
+            self.sound.unlock()
+            self.emergency_release_all()
+            self.cursor_overlay.hide()
+            self.camera_overlay.hide()
+            self._update_keyboard_visibility(False)
+            self.main_window.showNormal()
+
+    def _update_keyboard_visibility(self, visible: bool):
+        if visible and self.is_active:
+            vx, vy, vw, vh = self.target_bounds
+            kw = self.keyboard_overlay.width()
+            kh = self.keyboard_overlay.height()
+            kx = vx + (vw - kw) // 2
+            ky = vy + vh - kh - 40
+            self.keyboard_overlay.move(kx, ky)
+            self.keyboard_overlay.show()
+        else:
+            self.keyboard_overlay.hide()
+            self.keyboard_out.release_all_modifiers()
+
+    def _show_tray_message(self, title: str, message: str):
+        self.tray.showMessage(title, message, QSystemTrayIcon.Information, 2000)
+
+    def _on_settings_reloaded(self):
+        self._apply_filter_profile()
+        self.target_bounds = self.mouse.get_target_bounds(
+            getattr(self.settings.monitors, "monitor_index", -1)
+        )
+        self.camera_overlay.setWindowOpacity(self.settings.overlay.preview_opacity)
+        self.keyboard_overlay.setWindowOpacity(self.settings.keyboard.opacity)
+        self.keyboard_overlay._recalculate_window_size()
+
+    def _on_camera_device_changed(self, idx: int, name: str):
+        self.camera.change_camera(idx, name)
+
+    def _on_fps_cap_changed(self, fps: int):
+        self.camera.set_target_fps(fps)
+
+    def _on_monitor_changed(self, mon_idx: int):
+        self.target_bounds = self.mouse.get_target_bounds(mon_idx)
+
+    def _processing_loop(self):
+        """Continuous low-latency frame ingestion and vision/keyboard execution thread."""
+        frame_count = 0
+        fps_start = time.perf_counter()
+
+        while self.running:
+            try:
+                loop_start = time.perf_counter()
+                frame, ts = self.camera.get_frame()
+
+                if frame is None:
+                    time.sleep(0.005)
+                    continue
+
+                hand = self.tracker.process_frame(frame, ts)
+                infer_ms = (time.perf_counter() - loop_start) * 1000.0
+
+                # Record landmarks if developer recording is active
+                if self.recorder.is_recording:
+                    self.recorder.record_frame(hand)
+
+                # 1. Evaluate Poses & Mode Transitions
+                current_mode_name = self.mode_manager.mode.value
+                eval_res = self.gesture_engine.process(
+                    hand=hand,
+                    screen_bounds=self.target_bounds,
+                    filter_2d=self.filter,
+                    current_mode=current_mode_name,
+                )
+
+                action = eval_res["action"]
+
+                # Handle Auto-pause on hand lost
+                if action == GestureAction.AUTO_PAUSE.value and not self.mode_manager.is_paused:
+                    self.mode_manager.toggle_pause(force_state=True)
+                    self.emergency_release_all()
+                    self.signals.tray_notification_requested.emit(
+                        APP_NAME, f"Auto-paused: No hand seen for {int(self.settings.gestures.auto_pause_timeout_s)}s"
+                    )
+
+                # Handle Pause Toggle Gesture (Closed Fist 1.5s)
+                if action == GestureAction.PAUSE_TOGGLE.value:
+                    self.mode_manager.toggle_pause()
+                    self.emergency_release_all()
+                    self.sound.warning()
+                    self.signals.tray_notification_requested.emit(
+                        APP_NAME, "Tracking Paused (Closed Fist Gesture)"
+                    )
+
+                # Handle Mode Transitions
+                if action == GestureAction.ENTER_KEYBOARD.value and self.mode_manager.mode != AppMode.KEYBOARD:
+                    self.mode_manager.mode = AppMode.KEYBOARD
+                    self._update_keyboard_visibility(True)
+                    self.sound.mode_change()
+                elif action == GestureAction.EXIT_KEYBOARD.value and self.mode_manager.mode == AppMode.KEYBOARD:
+                    self.mode_manager.mode = AppMode.POINTER
+                    self._update_keyboard_visibility(False)
+                    self.sound.unlock()
+
+                # Safety release on tracking lost
+                if not eval_res["hand_visible"]:
+                    self.emergency_release_all()
+
+                # 2. KEYBOARD MODE PROCESSING
+                bounce_triggered = False
+                curls_dict = {}
+
+                if self.mode_manager.mode == AppMode.KEYBOARD and self.is_active and not self.mode_manager.is_paused:
+                    tapped_finger, is_repeat, curls_dict = self.finger_tap_detector.process(hand)
+                    cur_window = self.mode_manager.get_current_window()
+
+                    if tapped_finger is not None:
+                        t_dispatch_start = time.perf_counter()
+                        if tapped_finger == "thumb":
+                            self.keyboard_out.send_key("space", char_to_send=" ")
+                            self.signals.key_typed.emit("space", "Space")
+                            self.sound.key_click()
+                            log_input_event("space_tap", count=1, duration_ms=(time.perf_counter() - t_dispatch_start) * 1000.0)
+                        else:
+                            finger_names = ["index", "middle", "ring", "pinky"]
+                            effective_hand = self.mode_manager.get_effective_handedness(hand)
+
+                            if hand is not None:
+                                tip_indices = [8, 12, 16, 20]
+                                finger_x_pairs = [(finger_names[i], hand.get(tip_indices[i]).x) for i in range(4)]
+                                finger_x_pairs.sort(key=lambda p: p[1])
+                                sorted_finger_names = [p[0] for p in finger_x_pairs]
+
+                                if self.settings.keyboard.finger_mapping == "reversed" or effective_hand == "Left":
+                                    sorted_finger_names.reverse()
+
+                                try:
+                                    key_slot = sorted_finger_names.index(tapped_finger)
+                                except ValueError:
+                                    key_slot = finger_names.index(tapped_finger)
+                            else:
+                                key_slot = finger_names.index(tapped_finger)
+
+                            if 0 <= key_slot < len(cur_window.keys):
+                                target_key = cur_window.keys[key_slot]
+                                self.keyboard_out.send_key(
+                                    key_code=target_key.code,
+                                    char_to_send=target_key.char_to_send,
+                                    needs_shift=target_key.needs_shift,
+                                )
+                                self.signals.key_typed.emit(target_key.code, target_key.label)
+                                if is_repeat:
+                                    self.sound.key_repeat()
+                                else:
+                                    self.sound.key_click()
+                                log_input_event("key_tap", count=1, duration_ms=(time.perf_counter() - t_dispatch_start) * 1000.0)
+
+                    # Sliding door navigation swipes
+                    tap_in_progress = (tapped_finger is not None)
+                    swipe_dir = self.mode_manager.evaluate_swipes(hand, tap_in_progress=tap_in_progress)
+
+                    if swipe_dir in ("UP", "DOWN", "LEFT", "RIGHT", "CROSS_INTO_SYMBOLS", "CROSS_INTO_MAIN"):
+                        self.sound.mode_change()
+                    elif swipe_dir == "BOUNCE":
+                        bounce_triggered = True
+                        self.sound.warning()
+
+                    # Send keyboard state update via Qt signal
+                    self.signals.keyboard_updated.emit(
+                        self.mode_manager.active_zone,
+                        self.mode_manager.row_idx,
+                        self.mode_manager.window_idx,
+                        self.keyboard_out.modifiers,
+                        bounce_triggered
+                    )
+
+                # 3. Update Shared Telemetry
+                cur_win = self.mode_manager.get_current_window()
+                self.telemetry["raw_hand"] = hand
+                self.telemetry["mode"] = self.mode_manager.mode.value
+                self.telemetry["pose"] = eval_res["pose"]
+                self.telemetry["action"] = eval_res["action"]
+                self.telemetry["status_text"] = eval_res["status_text"]
+                self.telemetry["brush_locked"] = eval_res["brush_locked"]
+                self.telemetry["latency_ms"] = infer_ms
+                self.telemetry["kb_zone"] = self.mode_manager.active_zone.value
+                self.telemetry["kb_row"] = self.mode_manager.row_idx
+                self.telemetry["kb_win_keys"] = [k.label for k in cur_win.keys]
+                self.telemetry["curls"] = curls_dict
+                self.telemetry["is_paused"] = self.mode_manager.is_paused
+                self.telemetry["camera_connected"] = self.camera.is_connected
+                self.telemetry["is_low_light"] = self.camera.is_low_light
+                self.telemetry["is_over_exposed"] = self.camera.is_over_exposed
+                self.telemetry["camera_brightness"] = self.camera.avg_brightness
+
+                # 4. Render HUD Visualization onto frame
+                vis_frame = draw_hud_landmarks(
+                    frame_bgr=frame,
+                    hand=hand,
+                    active_region=self.settings.active_region,
+                    status_text=eval_res["status_text"],
+                    dwell_progress=eval_res["dwell_progress"],
+                    brush_locked=eval_res["brush_locked"],
+                    pause_progress=eval_res.get("fist_pause_progress", 0.0),
+                    is_paused=self.mode_manager.is_paused,
+                )
+                self.latest_vis_frame = vis_frame
+
+                # 5. POINTER MODE: Dispatch Mouse Events (if active and not paused)
+                if self.is_active and self.mode_manager.mode == AppMode.POINTER and not self.mode_manager.is_paused:
+                    cx = eval_res["cursor_x"]
+                    cy = eval_res["cursor_y"]
+
+                    if eval_res["hand_visible"] and action != GestureAction.PAUSE.value:
+                        self.mouse.move_to(cx, cy)
+
+                    # Update cursor overlay via Qt signal
+                    overlay_state = "NORMAL"
+                    if not eval_res["hand_visible"]:
+                        overlay_state = "LOST"
+                    elif eval_res["brush_locked"]:
+                        overlay_state = "BRUSH_LOCKED"
+                    elif action == GestureAction.SINGLE_CLICK.value:
+                        overlay_state = "CLICK"
+                    elif action == GestureAction.DOUBLE_CLICK.value:
+                        overlay_state = "DOUBLE_CLICK"
+
+                    self.signals.cursor_updated.emit(cx, cy, overlay_state, eval_res["dwell_progress"])
+
+                    # Mouse input dispatches
+                    if action == GestureAction.SINGLE_CLICK.value:
+                        self.mouse.click(cx, cy)
+                        self.signals.click_animated.emit(False)
+                        self.sound.key_click()
+                        log_input_event("click_left", count=1)
+
+                    elif action == GestureAction.DOUBLE_CLICK.value:
+                        self.mouse.double_click(cx, cy)
+                        self.signals.click_animated.emit(True)
+                        self.sound.double_click()
+                        log_input_event("double_click", count=1)
+
+                    elif action == GestureAction.RIGHT_CLICK.value:
+                        self.mouse.right_click(cx, cy)
+                        self.sound.key_click()
+                        log_input_event("click_right", count=1)
+
+                    elif action == GestureAction.SCROLL.value:
+                        delta = eval_res.get("scroll_delta", 0)
+                        self.mouse.scroll(delta)
+
+                    elif action == GestureAction.BRUSH_LOCK_TOGGLE.value:
+                        self.mouse.left_down()
+                        self.sound.lock()
+                        log_input_event("brush_lock_down", count=1)
+
+                    elif action == GestureAction.BRUSH_UNLOCK.value:
+                        self.mouse.left_up()
+                        self.sound.unlock()
+                        log_input_event("brush_lock_up", count=1)
+
+                # Send frame to preview overlay
+                if self.is_active and self.settings.overlay.preview_visible:
+                    self.signals.frame_updated.emit(vis_frame, self.telemetry["fps"])
+
+                # Measure FPS
+                frame_count += 1
+                elapsed = time.perf_counter() - fps_start
+                if elapsed >= 1.0:
+                    self.telemetry["fps"] = frame_count / elapsed
+                    frame_count = 0
+                    fps_start = time.perf_counter()
+
+                # Frame pacing
+                frame_time = time.perf_counter() - loop_start
+                target_fps = 15 if (self.settings.battery_saver and not self.is_active) else self.settings.target_fps
+                target_time = 1.0 / max(15, target_fps)
+                sleep_time = target_time - frame_time
+                if sleep_time > 0.001:
+                    time.sleep(sleep_time)
+
+            except Exception as e:
+                # Log error safely without leaking data
+                self.logger.error(f"Error in vision processing worker: {e}")
+                time.sleep(0.02)
+
+    def shutdown(self):
+        """Clean resource shutdown with guaranteed release of held inputs."""
+        self.running = False
+        self.emergency_release_all()
+        self.camera.stop()
+        self.tracker.close()
+        self.app.quit()
+
+
+def check_single_instance() -> Optional[int]:
+    """Ensures only a single instance of Pointer V runs simultaneously."""
+    if not sys.platform.startswith("win"):
+        return None
+    try:
+        kernel32 = ctypes.windll.kernel32
+        ERROR_ALREADY_EXISTS = 183
+        mutex = kernel32.CreateMutexW(None, False, MUTEX_NAME)
+        last_error = kernel32.GetLastError()
+        if last_error == ERROR_ALREADY_EXISTS:
+            return None
+        return mutex
+    except Exception:
+        return 1
+
+
+def main():
+    mutex = check_single_instance()
+    if mutex is None:
+        print(f"[{APP_NAME}] Another instance is already running. Focusing running instance and exiting.")
+        sys.exit(0)
+
+    os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
+    os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+
+    app = QApplication(sys.argv)
+    app.setApplicationName(APP_NAME)
+    app.setQuitOnLastWindowClosed(False)
+
+    pv_app = PointerVApp(app)
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()

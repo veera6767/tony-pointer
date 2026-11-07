@@ -20,7 +20,7 @@ import {
   Keyboard as KeyboardIcon
 } from 'lucide-react';
 import JSZip from 'jszip';
-import { TONY_POINTER_FILES } from './data/codeFiles';
+import { POINTER_V_FILES } from './data/codeFiles';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'chamber' | 'keyboard' | 'code' | 'settings' | 'guide'>('chamber');
@@ -125,9 +125,9 @@ export default function App() {
   // Direct Zip Downloader in Header
   const handleDownloadAllZip = async () => {
     const zip = new JSZip();
-    const folder = zip.folder("tony_pointer");
+    const folder = zip.folder("pointer_v");
     if (folder) {
-      TONY_POINTER_FILES.forEach((f) => {
+      POINTER_V_FILES.forEach((f) => {
         folder.file(f.name, f.content);
       });
     }
@@ -135,7 +135,7 @@ export default function App() {
     const url = URL.createObjectURL(content);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "TonyPointer-Windows-App.zip";
+    link.download = "PointerV-Source.zip";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -143,16 +143,16 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#050811] text-slate-100 flex flex-col antialiased selection:bg-cyan-500/30 selection:text-cyan-200">
+    <div className="min-h-screen bg-[#0B0E13] text-slate-100 flex flex-col antialiased selection:bg-blue-600/30 selection:text-blue-200">
       {/* 1. Universal Top Bar Contract: Brand Zone — Nav Links — Action Button */}
-      <header className="flex items-center justify-between gap-8 px-6 py-3.5 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
+      <header className="flex items-center justify-between gap-8 px-6 py-3.5 border-b border-[#232A36] bg-[#11151C]/90 backdrop-blur-md sticky top-0 z-50">
         {/* Brand Zone */}
         <div className="flex items-center gap-2.5 whitespace-nowrap shrink-0">
-          <div className="w-6 h-6 rounded-full border border-cyan-400 bg-cyan-950 flex items-center justify-center">
-            <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(0,229,255,1)]" />
+          <div className="w-6 h-6 rounded-md border border-[#2F7BFF] bg-[#171C25] flex items-center justify-center font-bold text-xs text-[#2F7BFF]">
+            PV
           </div>
-          <span className="text-base font-bold font-hud tracking-wider text-white">
-            TONY POINTER
+          <span className="text-base font-bold tracking-wider text-white">
+            POINTER V
           </span>
         </div>
 
@@ -161,7 +161,7 @@ export default function App() {
           <button
             onClick={() => setActiveTab('chamber')}
             className={`whitespace-nowrap transition-colors cursor-pointer ${
-              activeTab === 'chamber' ? 'text-cyan-400 border-b-2 border-cyan-400 pb-1 -mb-1' : 'hover:text-slate-200'
+              activeTab === 'chamber' ? 'text-[#2F7BFF] border-b-2 border-[#2F7BFF] pb-1 -mb-1' : 'hover:text-slate-200'
             }`}
           >
             Live Chamber & PC Sandbox
@@ -169,18 +169,18 @@ export default function App() {
           <button
             onClick={() => setActiveTab('keyboard')}
             className={`whitespace-nowrap transition-colors cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'keyboard' ? 'text-cyan-400 border-b-2 border-cyan-400 pb-1 -mb-1' : 'hover:text-slate-200'
+              activeTab === 'keyboard' ? 'text-[#2F7BFF] border-b-2 border-[#2F7BFF] pb-1 -mb-1' : 'hover:text-slate-200'
             }`}
           >
             <span>Air Keyboard Simulator</span>
-            <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-purple-950 text-purple-300 border border-purple-800">
+            <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-indigo-950 text-indigo-300 border border-indigo-800">
               NEW
             </span>
           </button>
           <button
             onClick={() => setActiveTab('code')}
             className={`whitespace-nowrap transition-colors cursor-pointer ${
-              activeTab === 'code' ? 'text-cyan-400 border-b-2 border-cyan-400 pb-1 -mb-1' : 'hover:text-slate-200'
+              activeTab === 'code' ? 'text-[#2F7BFF] border-b-2 border-[#2F7BFF] pb-1 -mb-1' : 'hover:text-slate-200'
             }`}
           >
             Python Source Explorer
@@ -188,7 +188,7 @@ export default function App() {
           <button
             onClick={() => setActiveTab('settings')}
             className={`whitespace-nowrap transition-colors cursor-pointer ${
-              activeTab === 'settings' ? 'text-cyan-400 border-b-2 border-cyan-400 pb-1 -mb-1' : 'hover:text-slate-200'
+              activeTab === 'settings' ? 'text-[#2F7BFF] border-b-2 border-[#2F7BFF] pb-1 -mb-1' : 'hover:text-slate-200'
             }`}
           >
             One Euro & Calibration
@@ -196,7 +196,7 @@ export default function App() {
           <button
             onClick={() => setActiveTab('guide')}
             className={`whitespace-nowrap transition-colors cursor-pointer ${
-              activeTab === 'guide' ? 'text-cyan-400 border-b-2 border-cyan-400 pb-1 -mb-1' : 'hover:text-slate-200'
+              activeTab === 'guide' ? 'text-[#2F7BFF] border-b-2 border-[#2F7BFF] pb-1 -mb-1' : 'hover:text-slate-200'
             }`}
           >
             Windows Setup & .EXE Build
@@ -207,7 +207,7 @@ export default function App() {
         <div className="flex items-center gap-3 shrink-0">
           <button
             onClick={handleDownloadAllZip}
-            className="flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold text-slate-950 bg-cyan-400 hover:bg-cyan-300 rounded-md shadow-[0_0_12px_rgba(0,229,255,0.4)] transition-all whitespace-nowrap cursor-pointer"
+            className="flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold text-white bg-[#2F7BFF] hover:bg-[#5BA0FF] rounded-md shadow-[0_0_12px_rgba(47,123,255,0.4)] transition-all whitespace-nowrap cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Download .ZIP</span>
@@ -217,35 +217,35 @@ export default function App() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col gap-6">
-        {/* Holographic Master Header & Arc-Reactor Power Node */}
-        <section className="flex flex-col md:flex-row items-center justify-between gap-6 p-6 rounded-lg bg-slate-950/70 border border-slate-800 shadow-xl hud-border">
+        {/* Master Header & Power Node */}
+        <section className="flex flex-col md:flex-row items-center justify-between gap-6 p-6 rounded-lg bg-[#11151C] border border-[#232A36] shadow-xl">
           <div className="flex-1">
-            <div className="flex items-center gap-2 text-xs font-mono text-cyan-400 mb-1">
-              <span>MARK 85 VISION INTERFACE</span>
+            <div className="flex items-center gap-2 text-xs font-mono text-[#2F7BFF] mb-1">
+              <span>PER-MONITOR DPI V2</span>
               <span aria-hidden="true">·</span>
               <span>WIN32 HARDWARE SENDINPUT</span>
               <span aria-hidden="true">·</span>
               <span>GLOBAL HOTKEY CTRL+ALT+T</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold font-hud tracking-tight text-white">
-              CONTROL YOUR ENTIRE PC WITH ONE HAND
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white">
+              CONTROL YOUR PC IN THE AIR WITH ONE HAND
             </h1>
             <p className="text-xs md:text-sm text-slate-400 mt-2 max-w-2xl leading-relaxed">
               Real-time MediaPipe Tasks HandLandmarker tracking at 60 FPS. Perform air double-taps to launch files, dwell or pinch to lock brush in Photoshop and Paint, and navigate multi-monitor setups without arm fatigue.
             </p>
 
-            {/* Unboxed Status Metadata Strip */}
-            <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-slate-400 mt-4 pt-4 border-t border-slate-800/80">
+            {/* Status Metadata Strip */}
+            <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-slate-400 mt-4 pt-4 border-t border-[#232A36]">
               <div>
-                STATUS: <span className={isModeActive ? 'text-emerald-400 font-bold' : 'text-slate-500'}>{isModeActive ? 'ENGAGED' : 'STANDBY'}</span>
+                STATUS: <span className={isModeActive ? 'text-emerald-400 font-bold' : 'text-slate-500'}>{isModeActive ? 'RUNNING' : 'PAUSED'}</span>
               </div>
               <span aria-hidden="true">·</span>
               <div>
-                LATENCY: <span className="text-cyan-400 tabular-nums">7.8 ms</span>
+                LATENCY: <span className="text-[#2F7BFF] tabular-nums">7.8 ms</span>
               </div>
               <span aria-hidden="true">·</span>
               <div>
-                INFERENCE: <span className="text-cyan-400 tabular-nums">60.0 FPS</span>
+                INFERENCE: <span className="text-[#2F7BFF] tabular-nums">60.0 FPS</span>
               </div>
               <span aria-hidden="true">·</span>
               <div>
@@ -254,14 +254,14 @@ export default function App() {
             </div>
           </div>
 
-          {/* Master Arc Reactor Engaging Toggle */}
+          {/* Master Engaging Toggle */}
           <div className="flex flex-col items-center gap-2 shrink-0">
             <ArcReactorButton
               isActive={isModeActive}
               onToggle={() => setIsModeActive(!isModeActive)}
             />
             <span className="text-[11px] font-mono text-slate-400">
-              {isModeActive ? 'TONY POINTER MODE: ON' : 'TONY POINTER MODE: OFF'}
+              {isModeActive ? 'POINTER V: ON' : 'POINTER V: PAUSED'}
             </span>
           </div>
         </section>
@@ -285,8 +285,8 @@ export default function App() {
                 />
 
                 {/* Gesture Quick Reference Card */}
-                <div className="p-4 rounded-lg bg-slate-950/70 border border-slate-800 text-xs">
-                  <div className="font-hud font-semibold text-cyan-400 tracking-wide mb-2">
+                <div className="p-4 rounded-lg bg-[#11151C] border border-[#232A36] text-xs">
+                  <div className="font-semibold text-[#2F7BFF] tracking-wide mb-2">
                     AIR GESTURE HOTKEYS & CONTROLS
                   </div>
                   <ul className="space-y-1.5 font-mono text-[11px] text-slate-300">
@@ -374,8 +374,8 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="mt-auto border-t border-slate-900 bg-slate-950 py-4 px-6 text-center text-xs font-mono text-slate-500">
-        TONY POINTER · IRON-MAN HOLOGRAPHIC PC CONTROLLER · PYTHON 3.11 · MEDIAPIPE TASKS · WIN32 SENDINPUT
+      <footer className="mt-auto border-t border-[#232A36] bg-[#11151C] py-4 px-6 text-center text-xs font-mono text-slate-500">
+        POINTER V · CONTROL YOUR PC IN THE AIR WITH ONE HAND · PYTHON 3.12 · MEDIAPIPE · WIN32 SENDINPUT
       </footer>
     </div>
   );

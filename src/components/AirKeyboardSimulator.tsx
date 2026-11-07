@@ -96,7 +96,7 @@ export const AirKeyboardSimulator: React.FC = () => {
   const [capsLock, setCapsLock] = useState<boolean>(false);
 
   // Typed Text Output
-  const [typedText, setTypedText] = useState<string>('Hello Iron Man! ');
+  const [typedText, setTypedText] = useState<string>('Hello Pointer V! ');
   const [lastActionFeedback, setLastActionFeedback] = useState<string>('Ready - Press keys 1-4 or click');
   const [copied, setCopied] = useState<boolean>(false);
   const [bounceAnimation, setBounceAnimation] = useState<boolean>(false);
@@ -843,7 +843,7 @@ export const AirKeyboardSimulator: React.FC = () => {
             <div className="p-4 rounded-lg bg-slate-950 border border-slate-800 flex flex-col gap-2.5 text-xs font-mono text-slate-400">
               <div className="flex items-center justify-between text-cyan-400 font-bold">
                 <span>AIR KEYBOARD GESTURES SUMMARY</span>
-                <span className="text-[10px] text-slate-500">Tony Pointer Mark 85</span>
+                <span className="text-[10px] text-slate-500">Pointer V v2.0.0</span>
               </div>
               <div className="space-y-1 text-[11px]">
                 <div className="flex justify-between">

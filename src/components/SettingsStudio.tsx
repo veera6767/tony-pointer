@@ -77,7 +77,7 @@ export const SettingsStudio: React.FC<SettingsStudioProps> = ({
       <div className="flex items-center justify-between border-b border-slate-800 pb-4">
         <div>
           <h2 className="text-lg font-bold font-hud text-cyan-400 tracking-wide">
-            TONY POINTER CONFIGURATION ENGINE
+            POINTER V CONFIGURATION ENGINE
           </h2>
           <p className="text-xs text-slate-400">
             Real-time threshold calibration for One Euro filters, air-tap detectors, and active regions
