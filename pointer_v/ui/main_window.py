@@ -9,7 +9,7 @@ from typing import Callable, Dict, Optional
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QMainWindow, QStackedWidget, QVBoxLayout, QWidget
+    QFrame, QHBoxLayout, QLabel, QMainWindow, QStackedWidget, QVBoxLayout, QWidget
 )
 
 from recorder import LandmarkRecorder
