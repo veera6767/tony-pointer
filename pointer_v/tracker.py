@@ -124,6 +124,9 @@ class HandTracker:
         else:
             self.model_path = found_path
 
+        import logging
+        logging.getLogger(APP_NAME).info(f"Loaded MediaPipe HandLandmarker model from: {self.model_path}")
+
         self.landmarker = self._create_landmarker()
         self.last_result: Optional[HandFrame] = None
         self.last_seen_time: float = 0.0

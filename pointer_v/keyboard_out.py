@@ -132,14 +132,21 @@ class Win32KeyboardOutput:
         # Last tapped modifier for double-tap lock detection
         self.last_modifier_tap: Dict[str, float] = {}
 
+        # Optional override for deterministic unit testing
+        self._caps_lock_override: Optional[bool] = None
+
     def is_caps_lock_on(self) -> bool:
         """Inspects physical Windows Caps Lock toggle status."""
-        if self.is_windows and self.user32:
+        if self._caps_lock_override is not None:
+            return self._caps_lock_override
+        if self.modifiers.get("caps") == ModifierState.LOCKED:
+            return True
+        if self.is_windows and self.user32 and not self.send_hook:
             try:
                 return (self.user32.GetKeyState(VK_CAPITAL) & 0x0001) != 0
             except Exception:
                 pass
-        return self.modifiers.get("caps") == ModifierState.LOCKED
+        return False
 
     def _send_scan(self, scancode: int, is_extended: bool, is_up: bool):
         if self.send_hook:

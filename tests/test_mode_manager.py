@@ -132,3 +132,65 @@ def test_left_and_right_handedness_resolution():
     cfg.gestures.dominant_hand = "right"
     assert mgr.get_effective_handedness(hand_left) == "Right"
 
+
+def test_left_hand_swipes_and_zone_crossing():
+    """Left hand must follow the exact same intuitive navigation: swipe right enters Symbols, swipe left enters Main."""
+    cfg = AppConfig()
+    cfg.gestures.dominant_hand = "left"
+    cfg.keyboard.symbols_panel_enabled = True
+    cfg.keyboard.swipe_threshold = 0.30
+
+    layout_mgr = KeyboardLayoutManager()
+    mgr = ModeManager(cfg, layout_mgr)
+    mgr.mode = AppMode.KEYBOARD
+    mgr.row_idx = 3
+    mgr.active_zone = Zone.MAIN
+    max_w = layout_mgr.get_max_window_idx(Zone.MAIN, 3)
+    mgr.window_idx = max_w
+
+    # Left hand in neutral
+    left_neutral = create_synthetic_hand(wrist_xy=(0.5, 0.7), is_left_hand=True)
+    mgr.evaluate_swipes(left_neutral, tap_in_progress=False)
+
+    # Swipe RIGHT with left hand across boundary into Symbols
+    left_swipe_right = create_synthetic_hand(wrist_xy=(0.65, 0.7), is_left_hand=True)
+    action = mgr.evaluate_swipes(left_swipe_right, tap_in_progress=False)
+    assert action == "CROSS_INTO_SYMBOLS"
+    assert mgr.active_zone == Zone.SYMBOLS
+    assert mgr.window_idx == 0
+
+    # Neutral return
+    mgr.evaluate_swipes(left_neutral, tap_in_progress=False)
+    time.sleep(0.35)
+
+    # Swipe LEFT with left hand back into Main
+    left_swipe_left = create_synthetic_hand(wrist_xy=(0.35, 0.7), is_left_hand=True)
+    action2 = mgr.evaluate_swipes(left_swipe_left, tap_in_progress=False)
+    assert action2 == "CROSS_INTO_MAIN"
+    assert mgr.active_zone == Zone.MAIN
+    assert mgr.window_idx == max_w
+
+
+def test_finger_visual_order_left_vs_right_hand():
+    """Visual mapping: Right hand index is slot 0, Left hand index is slot 3 (aligned with visual screen position)."""
+    hand_right = create_synthetic_hand(is_left_hand=False)
+    hand_left = create_synthetic_hand(is_left_hand=True)
+
+    finger_names = ["index", "middle", "ring", "pinky"]
+    tip_indices = [8, 12, 16, 20]
+
+    # Right hand: sorted by x gives [index, middle, ring, pinky]
+    r_pairs = [(finger_names[i], hand_right.get(tip_indices[i]).x) for i in range(4)]
+    r_pairs.sort(key=lambda p: p[1])
+    r_sorted = [p[0] for p in r_pairs]
+    assert r_sorted.index("index") == 0
+    assert r_sorted.index("pinky") == 3
+
+    # Left hand: sorted by x gives [pinky, ring, middle, index]
+    l_pairs = [(finger_names[i], hand_left.get(tip_indices[i]).x) for i in range(4)]
+    l_pairs.sort(key=lambda p: p[1])
+    l_sorted = [p[0] for p in l_pairs]
+    assert l_sorted.index("pinky") == 0
+    assert l_sorted.index("index") == 3
+
+

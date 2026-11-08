@@ -95,6 +95,14 @@ class MainWindow(QMainWindow):
         self.title_bar.close_clicked.connect(self.hide)  # Close minimizes to tray
         root_layout.addWidget(self.title_bar)
 
+        # 1.1 Camera Disconnect Reconnect Warning Banner
+        self.camera_banner = QLabel("⚠ Camera disconnected or unavailable. Retrying every 2 seconds... (Auto-resumes on replug)")
+        self.camera_banner.setFixedHeight(28)
+        self.camera_banner.setAlignment(Qt.AlignCenter)
+        self.camera_banner.setStyleSheet("background-color: #2D1515; color: #F0506E; border-bottom: 1px solid rgba(240, 80, 110, 0.4); font-size: 11px; font-weight: 600;")
+        self.camera_banner.hide()
+        root_layout.addWidget(self.camera_banner)
+
         # 2. Main Body Split: Left Sidebar Rail, Right Stacked Pages
         body_layout = QHBoxLayout()
         body_layout.setContentsMargins(0, 0, 0, 0)
@@ -211,6 +219,12 @@ class MainWindow(QMainWindow):
         self.title_bar.mode_chip.set_status(mode, is_paused)
         self.status_bar.update_telemetry(fps, latency, cam_conn, is_paused)
 
+        # Show camera disconnect banner if camera is offline
+        if not cam_conn:
+            self.camera_banner.show()
+        else:
+            self.camera_banner.hide()
+
         # Active page refresh
         cur_idx = self.deck.currentIndex()
         if cur_idx == 0:
@@ -227,14 +241,32 @@ class MainWindow(QMainWindow):
             self.page_prac.update_telemetry(telem)
 
     def _restore_geometry(self):
+        from PySide6.QtCore import QPoint, QRect, QSize
+        from PySide6.QtGui import QGuiApplication
+
         geom = self.settings.window_geometry.get("main", [100, 100, 1080, 700])
         x, y, w, h = geom
         # Clamp to reasonable bounds
         w = max(1000, w)
         h = max(640, h)
         self.resize(w, h)
-        if x >= 0 and y >= 0:
+
+        # Check if saved (x, y) coordinates intersect any currently connected monitor
+        target_rect = QRect(x, y, w, h)
+        is_visible = any(s.geometry().intersects(target_rect) for s in QGuiApplication.screens())
+
+        if is_visible and x >= -500 and y >= -500:
             self.move(x, y)
+        else:
+            # Fallback to centering on primary monitor
+            primary = QGuiApplication.primaryScreen()
+            if primary:
+                geo = primary.availableGeometry()
+                cx = geo.x() + max(0, (geo.width() - w) // 2)
+                cy = geo.y() + max(0, (geo.height() - h) // 2)
+                self.move(cx, cy)
+            else:
+                self.move(100, 100)
 
     def closeEvent(self, event):
         # Save geometry

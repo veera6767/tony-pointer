@@ -106,3 +106,87 @@ def test_emergency_release_all_modifiers():
     for mod in kb.modifiers:
         assert kb.modifiers[mod] == ModifierState.INACTIVE
 
+
+def test_caps_lock_on_with_shifted_symbol():
+    """Caps ON + '!' must still send Shift down/up with base key '1', since CapsLock only affects letters."""
+    mock = MockSendInputDispatcher()
+    kb = Win32KeyboardOutput(send_hook=mock)
+    kb._caps_lock_override = True
+
+    kb.send_key("exclamation", char_to_send="!", needs_shift=True)
+
+    # Must send Shift down (0x2A), base key 1 down (0x02), base key 1 up (0x02), Shift up (0x2A)
+    assert len(mock.events) == 4
+    assert mock.events[0] == ("scan", 0x2A, False, False)
+    assert mock.events[1] == ("scan", 0x02, False, False)
+    assert mock.events[2] == ("scan", 0x02, False, True)
+    assert mock.events[3] == ("scan", 0x2A, False, True)
+
+
+def test_caps_lock_on_with_letter():
+    """Caps ON + 'a' should dispatch base key 'a' (0x1E) without adding Shift, because CapsLock alone handles uppercase in Windows."""
+    mock = MockSendInputDispatcher()
+    kb = Win32KeyboardOutput(send_hook=mock)
+    kb._caps_lock_override = True
+
+    kb.send_key("a", char_to_send="a", needs_shift=False)
+
+    # Shift (0x2A) must NOT be sent; only 'a' (0x1E) down and up
+    scans_sent = [e[1] for e in mock.events]
+    assert 0x2A not in scans_sent
+    assert mock.events == [("scan", 0x1E, False, False), ("scan", 0x1E, False, True)]
+
+
+def test_shift_latched_with_shifted_symbol():
+    """Shift latched + '!' sends base key '1' (0x02) without double-pressing Shift, then consumes latched Shift."""
+    mock = MockSendInputDispatcher()
+    kb = Win32KeyboardOutput(send_hook=mock)
+    kb._caps_lock_override = False
+
+    kb.toggle_modifier("shift") # Latch Shift (emits 0x2A down)
+    assert kb.modifiers["shift"] == ModifierState.LATCHED
+    mock.events.clear()
+
+    kb.send_key("exclamation", char_to_send="!", needs_shift=True)
+
+    # Only sends base key '1' down/up, then releases latched Shift
+    down_scans = [e[1] for e in mock.events if not e[3]]
+    assert down_scans == [0x02], "Shift down was erroneously double-applied!"
+    # Latched Shift is consumed and released
+    assert mock.events[-1] == ("scan", 0x2A, False, True)
+    assert kb.modifiers["shift"] == ModifierState.INACTIVE
+
+
+def test_shift_latched_with_letter():
+    """Shift latched + 'a' sends base key 'a' (0x1E) under existing physical Shift, then consumes latched Shift."""
+    mock = MockSendInputDispatcher()
+    kb = Win32KeyboardOutput(send_hook=mock)
+    kb._caps_lock_override = False
+
+    kb.toggle_modifier("shift") # Latch Shift
+    mock.events.clear()
+
+    kb.send_key("a", char_to_send="a", needs_shift=False)
+
+    down_scans = [e[1] for e in mock.events if not e[3]]
+    assert down_scans == [0x1E]
+    # Latched Shift is released after typing
+    assert mock.events[-1] == ("scan", 0x2A, False, True)
+    assert kb.modifiers["shift"] == ModifierState.INACTIVE
+
+
+def test_neither_shift_nor_caps_with_shifted_symbol():
+    """Neither Shift nor CapsLock + '!' sends Shift down, base key '1' down/up, and Shift up."""
+    mock = MockSendInputDispatcher()
+    kb = Win32KeyboardOutput(send_hook=mock)
+    kb._caps_lock_override = False
+
+    kb.send_key("exclamation", char_to_send="!", needs_shift=True)
+
+    assert len(mock.events) == 4
+    assert mock.events[0] == ("scan", 0x2A, False, False)
+    assert mock.events[1] == ("scan", 0x02, False, False)
+    assert mock.events[2] == ("scan", 0x02, False, True)
+    assert mock.events[3] == ("scan", 0x2A, False, True)
+
+

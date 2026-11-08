@@ -513,10 +513,11 @@ class PointerVApp(QObject):
                             if hand is not None:
                                 tip_indices = [8, 12, 16, 20]
                                 finger_x_pairs = [(finger_names[i], hand.get(tip_indices[i]).x) for i in range(4)]
+                                # Sort left-to-right by visual horizontal position in mirrored view
                                 finger_x_pairs.sort(key=lambda p: p[1])
                                 sorted_finger_names = [p[0] for p in finger_x_pairs]
 
-                                if self.settings.keyboard.finger_mapping == "reversed" or effective_hand == "Left":
+                                if self.settings.keyboard.finger_mapping == "reversed":
                                     sorted_finger_names.reverse()
 
                                 try:
@@ -524,7 +525,11 @@ class PointerVApp(QObject):
                                 except ValueError:
                                     key_slot = finger_names.index(tapped_finger)
                             else:
-                                key_slot = finger_names.index(tapped_finger)
+                                if effective_hand == "Left":
+                                    left_order = ["pinky", "ring", "middle", "index"]
+                                    key_slot = left_order.index(tapped_finger) if tapped_finger in left_order else 0
+                                else:
+                                    key_slot = finger_names.index(tapped_finger) if tapped_finger in finger_names else 0
 
                             if 0 <= key_slot < len(cur_window.keys):
                                 target_key = cur_window.keys[key_slot]
@@ -702,6 +707,16 @@ def main():
 
     os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
     os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+
+    # Set Windows Per-Monitor DPI Awareness V2 at earliest startup step
+    if sys.platform.startswith("win"):
+        try:
+            ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+        except Exception:
+            try:
+                ctypes.windll.shcore.SetProcessDpiAwareness(2)
+            except Exception:
+                pass
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)

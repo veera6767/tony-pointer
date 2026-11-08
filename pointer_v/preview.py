@@ -35,7 +35,7 @@ class CameraPreviewOverlay(QWidget):
         w = self.settings.overlay.preview_width
         h = self.settings.overlay.preview_height
         self.resize(w, h)
-        self.move(self.settings.overlay.preview_pos_x, self.settings.overlay.preview_pos_y)
+        self._restore_position(w, h)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -44,6 +44,24 @@ class CameraPreviewOverlay(QWidget):
         self.display_label.setAlignment(Qt.AlignCenter)
         self.display_label.setStyleSheet("background-color: transparent;")
         layout.addWidget(self.display_label)
+
+    def _restore_position(self, w: int, h: int):
+        from PySide6.QtCore import QRect
+        from PySide6.QtGui import QGuiApplication
+        px = self.settings.overlay.preview_pos_x
+        py = self.settings.overlay.preview_pos_y
+
+        target_rect = QRect(px, py, w, h)
+        is_visible = any(s.geometry().intersects(target_rect) for s in QGuiApplication.screens())
+        if is_visible and px >= -500 and py >= -500:
+            self.move(px, py)
+        else:
+            primary = QGuiApplication.primaryScreen()
+            if primary:
+                geo = primary.availableGeometry()
+                self.move(geo.x() + geo.width() - w - 24, geo.y() + 24)
+            else:
+                self.move(100, 100)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -60,7 +78,33 @@ class CameraPreviewOverlay(QWidget):
 
     def update_frame(self, frame_bgr, fps: float = 0.0):
         """Converts BGR OpenCV frame to QPixmap and paints preview overlay."""
+        target_w = max(100, self.width())
+        target_h = max(70, self.height())
+
+        final_pix = QPixmap(target_w, target_h)
+        final_pix.fill(Qt.transparent)
+        painter = QPainter(final_pix)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+
+        from PySide6.QtGui import QPainterPath
+        path = QPainterPath()
+        path.addRoundedRect(0, 0, target_w, target_h, RADIUS_PANEL, RADIUS_PANEL)
+        painter.setClipPath(path)
+
         if frame_bgr is None:
+            # Draw offline/reconnecting banner
+            painter.fillRect(0, 0, target_w, target_h, QColor("#11151C"))
+            painter.setPen(QPen(QColor(BORDER), 1.0))
+            painter.drawRoundedRect(0, 0, target_w - 1, target_h - 1, RADIUS_PANEL, RADIUS_PANEL)
+
+            painter.setPen(QColor("#F0506E"))
+            painter.setFont(get_mono_font(10, bold=True))
+            painter.drawText(0, target_h // 2 - 8, target_w, 20, Qt.AlignCenter, "⚠ Camera Offline")
+            painter.setPen(QColor(TEXT_PRIMARY))
+            painter.setFont(get_mono_font(8))
+            painter.drawText(0, target_h // 2 + 10, target_w, 16, Qt.AlignCenter, "Retrying every 2s...")
+            painter.end()
+            self.display_label.setPixmap(final_pix)
             return
 
         self.fps_display = fps
@@ -69,25 +113,9 @@ class CameraPreviewOverlay(QWidget):
         rgb_frame = frame_bgr[:, :, ::-1].copy()
         q_img = QImage(rgb_frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
 
-        target_w = self.width()
-        target_h = self.height()
-
         pix = QPixmap.fromImage(q_img).scaled(
             target_w, target_h, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
         )
-
-        # Draw 8px rounded corners + corner brackets + FPS chip onto pixmap
-        final_pix = QPixmap(target_w, target_h)
-        final_pix.fill(Qt.transparent)
-
-        painter = QPainter(final_pix)
-        painter.setRenderHint(QPainter.Antialiasing, True)
-
-        # Clip to 8px rounded rect
-        from PySide6.QtGui import QPainterPath
-        path = QPainterPath()
-        path.addRoundedRect(0, 0, target_w, target_h, RADIUS_PANEL, RADIUS_PANEL)
-        painter.setClipPath(path)
         painter.drawPixmap(0, 0, pix)
 
         # 1px border

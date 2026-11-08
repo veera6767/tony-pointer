@@ -100,6 +100,20 @@ class FloatingAirKeyboardWidget(QWidget):
         super().showEvent(event)
         # Apply Win32 NOACTIVATE style after window is created
         apply_noactivate_style(int(self.winId()))
+        self._ensure_on_screen()
+
+    def _ensure_on_screen(self):
+        from PySide6.QtCore import QRect
+        from PySide6.QtGui import QGuiApplication
+        target_rect = QRect(self.pos(), self.size())
+        is_visible = any(s.geometry().intersects(target_rect) for s in QGuiApplication.screens())
+        if not is_visible:
+            primary = QGuiApplication.primaryScreen()
+            if primary:
+                geo = primary.availableGeometry()
+                cx = geo.x() + max(0, (geo.width() - self.width()) // 2)
+                cy = geo.y() + geo.height() - self.height() - 40
+                self.move(cx, cy)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
