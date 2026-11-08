@@ -30,7 +30,7 @@ SM_YVIRTUALSCREEN = 77
 SM_CXVIRTUALSCREEN = 78
 SM_CYVIRTUALSCREEN = 79
 
-# Ctypes Structures for Win32 SendInput
+# Ctypes Structures for Win32 SendInput (aligned to Windows SDK x64 40-byte tagINPUT)
 class MOUSEINPUT(ctypes.Structure):
     _fields_ = [
         ("dx", ctypes.c_long),
@@ -38,12 +38,34 @@ class MOUSEINPUT(ctypes.Structure):
         ("mouseData", ctypes.c_ulong),
         ("dwFlags", ctypes.c_ulong),
         ("time", ctypes.c_ulong),
-        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+        ("dwExtraInfo", ctypes.c_size_t),
+    ]
+
+
+class KEYBDINPUT(ctypes.Structure):
+    _fields_ = [
+        ("wVk", ctypes.c_ushort),
+        ("wScan", ctypes.c_ushort),
+        ("dwFlags", ctypes.c_ulong),
+        ("time", ctypes.c_ulong),
+        ("dwExtraInfo", ctypes.c_size_t),
+    ]
+
+
+class HARDWAREINPUT(ctypes.Structure):
+    _fields_ = [
+        ("uMsg", ctypes.c_ulong),
+        ("wParamL", ctypes.c_ushort),
+        ("wParamH", ctypes.c_ushort),
     ]
 
 
 class INPUT_UNION(ctypes.Union):
-    _fields_ = [("mi", MOUSEINPUT)]
+    _fields_ = [
+        ("mi", MOUSEINPUT),
+        ("ki", KEYBDINPUT),
+        ("hi", HARDWAREINPUT),
+    ]
 
 
 class INPUT(ctypes.Structure):
@@ -80,6 +102,9 @@ class MouseController:
         self.last_pos = (0, 0)
         self.send_hook = send_hook
         self.monitors: List[Tuple[int, int, int, int]] = []
+        self.last_sendinput_ret: int = 1
+        self.last_sendinput_err: int = 0
+        self.last_action: str = "IDLE"
 
         if self.is_windows:
             self.user32 = ctypes.windll.user32
@@ -180,7 +205,8 @@ class MouseController:
         norm_y = max(0, min(65535, norm_y))
         return norm_x, norm_y
 
-    def _send_input(self, flags: int, data: int = 0, dx: int = 0, dy: int = 0):
+    def _send_input(self, flags: int, data: int = 0, dx: int = 0, dy: int = 0, action_name: str = "MOUSE"):
+        self.last_action = action_name
         if self.send_hook:
             self.send_hook(flags, data, dx, dy)
             return
@@ -188,44 +214,51 @@ class MouseController:
         if not self.is_windows or not self.user32:
             return
 
-        extra = ctypes.c_ulong(0)
         mi = MOUSEINPUT(
             dx=dx,
             dy=dy,
             mouseData=data,
             dwFlags=flags,
             time=0,
-            dwExtraInfo=ctypes.pointer(extra),
+            dwExtraInfo=0,
         )
         inp = INPUT(type=INPUT_MOUSE, u=INPUT_UNION(mi=mi))
-        self.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+        ret = self.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+        self.last_sendinput_ret = ret
+        if ret == 0:
+            self.last_sendinput_err = ctypes.windll.kernel32.GetLastError()
+        else:
+            self.last_sendinput_err = 0
 
     def move_to(self, screen_x: int, screen_y: int):
         """Move cursor instantly to absolute desktop coordinates."""
         self.last_pos = (screen_x, screen_y)
         norm_x, norm_y = self.normalize_to_virtual_desktop(screen_x, screen_y)
         flags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
-        self._send_input(flags=flags, dx=norm_x, dy=norm_y)
+        self._send_input(flags=flags, dx=norm_x, dy=norm_y, action_name="MOVE")
+        # Direct SetCursorPos ensure cursor movement succeeds even if SendInput flags face UIPI restrictions
+        if self.is_windows and self.user32 and self.last_sendinput_ret == 0:
+            self.user32.SetCursorPos(int(screen_x), int(screen_y))
 
     def left_down(self):
         """Press and hold left mouse button down."""
         if not self.is_left_down:
-            self._send_input(flags=MOUSEEVENTF_LEFTDOWN)
+            self._send_input(flags=MOUSEEVENTF_LEFTDOWN, action_name="LEFT_DOWN")
             self.is_left_down = True
 
     def left_up(self):
         """Release left mouse button."""
         if self.is_left_down:
-            self._send_input(flags=MOUSEEVENTF_LEFTUP)
+            self._send_input(flags=MOUSEEVENTF_LEFTUP, action_name="LEFT_UP")
             self.is_left_down = False
 
     def click(self, x: Optional[int] = None, y: Optional[int] = None):
         """Standard left click (Down then Up)."""
         if x is not None and y is not None:
             self.move_to(x, y)
-        self._send_input(flags=MOUSEEVENTF_LEFTDOWN)
+        self._send_input(flags=MOUSEEVENTF_LEFTDOWN, action_name="CLICK_DOWN")
         time.sleep(0.015)
-        self._send_input(flags=MOUSEEVENTF_LEFTUP)
+        self._send_input(flags=MOUSEEVENTF_LEFTUP, action_name="CLICK_UP")
 
     def double_click(self, x: Optional[int] = None, y: Optional[int] = None):
         """Rapid double left click."""
@@ -239,14 +272,14 @@ class MouseController:
         """Right click for context menus."""
         if x is not None and y is not None:
             self.move_to(x, y)
-        self._send_input(flags=MOUSEEVENTF_RIGHTDOWN)
+        self._send_input(flags=MOUSEEVENTF_RIGHTDOWN, action_name="RIGHT_DOWN")
         time.sleep(0.02)
-        self._send_input(flags=MOUSEEVENTF_RIGHTUP)
+        self._send_input(flags=MOUSEEVENTF_RIGHTUP, action_name="RIGHT_UP")
 
     def scroll(self, amount: int):
         """Scroll mouse wheel."""
         delta = int(amount * 120)
-        self._send_input(flags=MOUSEEVENTF_WHEEL, data=delta)
+        self._send_input(flags=MOUSEEVENTF_WHEEL, data=delta, action_name="SCROLL")
 
     def emergency_release(self):
         """Guarantees all mouse buttons (left, right, middle) are released safely."""

@@ -83,7 +83,7 @@ class OverlaySettings:
     cursor_size: int = 32
     preview_width: int = 320
     preview_height: int = 240
-    preview_opacity: float = 0.85
+    preview_opacity: float = 0.95
     preview_visible: bool = True
     preview_pos_x: int = 40
     preview_pos_y: int = 40
@@ -94,7 +94,7 @@ class KeyboardSettings:
     enabled: bool = True
     symbols_panel_enabled: bool = True
     dim_inactive_panel: bool = True
-    opacity: float = 0.88
+    opacity: float = 0.94
     open_palm_hold_s: float = 0.50       # Hold open palm for ~0.5s to open keyboard
     fist_close_hold_s: float = 0.50      # Hold fist for ~0.5s to close keyboard
     swipe_threshold: float = 0.32        # Normalized by hand size

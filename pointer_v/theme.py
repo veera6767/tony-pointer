@@ -65,12 +65,21 @@ RADIUS_WINDOW = 10
 
 def init_fonts():
     """Loads bundled Inter and JetBrains Mono fonts into QFontDatabase."""
-    fonts_dir = Path(__file__).resolve().parent / "assets" / "fonts"
-    for font_file in fonts_dir.glob("*.ttf"):
-        try:
-            QFontDatabase.addApplicationFont(str(font_file))
-        except Exception as e:
-            print(f"[Theme] Warning: Could not register font {font_file}: {e}")
+    import sys
+    base = Path(sys._MEIPASS) if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS") else Path(__file__).resolve().parent
+    candidates = [
+        base / "pointer_v" / "assets" / "fonts",
+        base / "assets" / "fonts",
+        Path(__file__).resolve().parent / "assets" / "fonts"
+    ]
+    for d in candidates:
+        if d.exists():
+            for font_file in d.glob("*.ttf"):
+                try:
+                    QFontDatabase.addApplicationFont(str(font_file))
+                except Exception as e:
+                    print(f"[Theme] Warning: Could not register font {font_file}: {e}")
+            break
 
 
 def get_ui_font(size: int = SIZE_BODY, bold: bool = False, weight: int = 500) -> QFont:

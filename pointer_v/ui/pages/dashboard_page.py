@@ -72,6 +72,38 @@ class DashboardPage(QWidget):
 
         layout.addWidget(top_card)
 
+        # 1.5 Pipeline Status Strip
+        self.pipeline_strip = QFrame()
+        self.pipeline_strip.setStyleSheet(
+            f"background-color: {BG2_CARDS}; border: 1px solid {BORDER}; border-radius: {RADIUS_CONTROL}px;"
+        )
+        strip_layout = QHBoxLayout(self.pipeline_strip)
+        strip_layout.setContentsMargins(16, 8, 16, 8)
+        strip_layout.setSpacing(16)
+
+        self.strip_master = QLabel("Pipeline: STANDBY")
+        self.strip_master.setFont(get_mono_font(10, bold=True))
+        self.strip_master.setStyleSheet(f"color: {AMBER};")
+        strip_layout.addWidget(self.strip_master)
+
+        self.strip_hand = QLabel("Hand: None")
+        self.strip_hand.setFont(get_mono_font(10))
+        self.strip_hand.setStyleSheet(f"color: {TEXT_SECONDARY};")
+        strip_layout.addWidget(self.strip_hand)
+
+        self.strip_target = QLabel("Target: (--, --)")
+        self.strip_target.setFont(get_mono_font(10))
+        self.strip_target.setStyleSheet(f"color: {TEXT_SECONDARY};")
+        strip_layout.addWidget(self.strip_target)
+
+        self.strip_output = QLabel("SendInput: M-OK / K-OK")
+        self.strip_output.setFont(get_mono_font(10))
+        self.strip_output.setStyleSheet(f"color: {GREEN};")
+        strip_layout.addWidget(self.strip_output)
+
+        strip_layout.addStretch()
+        layout.addWidget(self.pipeline_strip)
+
         # 2. Main Grid: Left Video Preview, Right Telemetry & Actions
         grid = QGridLayout()
         grid.setSpacing(16)
@@ -183,6 +215,38 @@ class DashboardPage(QWidget):
         kb_row = telemetry.get("kb_row", 3)
         mode = telemetry.get("mode", "POINTER")
         is_paused = telemetry.get("is_paused", False)
+
+        is_active = telemetry.get("is_active", False)
+        raw_hand = telemetry.get("raw_hand")
+        handedness = getattr(raw_hand, "handedness", "") if raw_hand else ""
+        hand_detected = raw_hand is not None
+        scr_pos = telemetry.get("screen_coords", (0, 0))
+        m_ret = telemetry.get("mouse_sendinput_ret", 1)
+        k_ret = telemetry.get("key_sendinput_ret", 1)
+
+        # Update status strip
+        if not is_active:
+            self.strip_master.setText("Pipeline: STANDBY (OFF)")
+            self.strip_master.setStyleSheet(f"color: {AMBER};")
+        elif is_paused:
+            self.strip_master.setText("Pipeline: PAUSED")
+            self.strip_master.setStyleSheet(f"color: {AMBER};")
+        else:
+            self.strip_master.setText("Pipeline: ACTIVE (ON)")
+            self.strip_master.setStyleSheet(f"color: {GREEN};")
+
+        if hand_detected:
+            self.strip_hand.setText(f"Hand: {handedness or 'Detected'}")
+            self.strip_hand.setStyleSheet(f"color: {CYAN};")
+            self.strip_target.setText(f"Target: ({scr_pos[0]}, {scr_pos[1]})")
+        else:
+            self.strip_hand.setText("Hand: Searching")
+            self.strip_hand.setStyleSheet(f"color: {TEXT_SECONDARY};")
+            self.strip_target.setText("Target: (--, --)")
+
+        out_ok = (m_ret > 0 and k_ret > 0)
+        self.strip_output.setText(f"SendInput: {'OK' if out_ok else 'WARN'}")
+        self.strip_output.setStyleSheet(f"color: {GREEN if out_ok else RED};")
 
         self.lbl_fps.setText(f"FPS: {fps:.1f}")
         self.lbl_latency.setText(f"Latency: {latency:.1f} ms")

@@ -6,6 +6,7 @@ with Win32 SendInput mouse/keyboard dispatch, and delivers thread-safe UI signal
 """
 
 import atexit
+import collections
 import ctypes
 import os
 import sys
@@ -120,8 +121,12 @@ class PointerVApp(QObject):
         # Master Mode Toggle
         self.is_active = False
         self.paint_profile_active = False
+        self.was_auto_paused = False
+        self.total_frames = 0
+        self.frames_with_hand = 0
+        self.internal_errors = collections.deque(maxlen=5)
 
-        # Shared Status Telemetry
+        # Shared Status Telemetry (Strict Privacy: No typed characters or key names)
         self.telemetry = {
             "fps": 0.0,
             "latency_ms": 0.0,
@@ -136,12 +141,24 @@ class PointerVApp(QObject):
             "kb_row": 3,
             "kb_win_keys": ["A", "S", "D", "F"],
             "curls": {},
+            "is_active": False,
             "is_paused": False,
             "camera_connected": True,
             "is_low_light": False,
             "is_over_exposed": False,
             "camera_brightness": 128.0,
             "monitor_count": len(self.mouse.monitors),
+            "total_frames": 0,
+            "frames_with_hand": 0,
+            "active_pos": (0.0, 0.0),
+            "screen_coords": (0, 0),
+            "mouse_sendinput_ret": 1,
+            "mouse_sendinput_err": 0,
+            "mouse_last_action": "IDLE",
+            "key_sendinput_ret": 1,
+            "key_sendinput_err": 0,
+            "key_last_action": "IDLE",
+            "internal_errors": [],
         }
         self.latest_vis_frame = None
 
@@ -152,6 +169,7 @@ class PointerVApp(QObject):
             recorder=self.recorder,
             get_status_fn=lambda: self.telemetry,
             get_frame_fn=lambda: self.latest_vis_frame,
+            keyboard_output=self.keyboard_out,
         )
         self.main_window.toggle_mode_requested.connect(self.set_active)
         self.main_window.toggle_keyboard_requested.connect(self._toggle_keyboard_mode)
@@ -190,7 +208,13 @@ class PointerVApp(QObject):
 
     def _get_tray_icon(self) -> QIcon:
         """Selects tray icon matching current mode and paused state."""
-        icons_dir = Path(__file__).resolve().parent / "assets" / "icons"
+        base = Path(sys._MEIPASS) if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS") else Path(__file__).resolve().parent
+        if (base / "pointer_v" / "assets" / "icons").exists():
+            icons_dir = base / "pointer_v" / "assets" / "icons"
+        elif (base / "assets" / "icons").exists():
+            icons_dir = base / "assets" / "icons"
+        else:
+            icons_dir = Path(__file__).resolve().parent / "assets" / "icons"
         if not self.is_active:
             p = icons_dir / "tray_off.png"
         elif self.mode_manager.is_paused:
@@ -283,7 +307,7 @@ class PointerVApp(QObject):
 
     def _setup_hotkeys(self):
         try:
-            keyboard.add_hotkey(self.settings.hotkey_toggle, lambda: self.set_active(not self.is_active))
+            keyboard.add_hotkey(self.settings.hotkey_toggle, lambda: self.set_active(not self.is_active, hide_window=True))
             keyboard.add_hotkey(self.settings.keyboard.hotkey_keyboard, self._toggle_keyboard_mode)
             keyboard.add_hotkey(self.settings.keyboard.hotkey_zone_toggle, self._toggle_keyboard_zone)
             keyboard.add_hotkey(self.settings.hotkey_paint, self._toggle_paint_mode)
@@ -368,15 +392,17 @@ class PointerVApp(QObject):
         else:
             self.telemetry["foreground_app"] = "DESKTOP"
 
-    def set_active(self, active: bool):
+    def set_active(self, active: bool, hide_window: bool = False):
         """Turns Pointer V ON or OFF."""
         self.is_active = active
+        self.telemetry["is_active"] = active
         self.main_window.set_system_active(active)
         self._update_tray_visuals()
 
         if active:
             self.sound.lock()
-            self.main_window.hide()
+            if hide_window:
+                self.main_window.hide()
             self.cursor_overlay.show()
             if self.settings.overlay.preview_visible:
                 self.camera_overlay.show()
@@ -392,7 +418,6 @@ class PointerVApp(QObject):
             self.cursor_overlay.hide()
             self.camera_overlay.hide()
             self._update_keyboard_visibility(False)
-            self.main_window.showNormal()
 
     def _update_keyboard_visibility(self, visible: bool):
         if visible and self.is_active:
@@ -442,7 +467,18 @@ class PointerVApp(QObject):
                     time.sleep(0.005)
                     continue
 
+                self.total_frames += 1
                 hand = self.tracker.process_frame(frame, ts)
+                if hand is not None:
+                    self.frames_with_hand += 1
+                    # Auto-resume if tracking was previously paused due to hand absence
+                    if self.was_auto_paused and self.mode_manager.is_paused:
+                        self.mode_manager.toggle_pause(force_state=False)
+                        self.was_auto_paused = False
+                        self.sound.lock()
+                        self.signals.tray_notification_requested.emit(APP_NAME, "Hand detected: Tracking resumed")
+                        self._update_tray_visuals()
+
                 infer_ms = (time.perf_counter() - loop_start) * 1000.0
 
                 # Record landmarks if developer recording is active
@@ -462,6 +498,7 @@ class PointerVApp(QObject):
 
                 # Handle Auto-pause on hand lost
                 if action == GestureAction.AUTO_PAUSE.value and not self.mode_manager.is_paused:
+                    self.was_auto_paused = True
                     self.mode_manager.toggle_pause(force_state=True)
                     self.emergency_release_all()
                     self.signals.tray_notification_requested.emit(
@@ -507,29 +544,21 @@ class PointerVApp(QObject):
                             self.sound.key_click()
                             log_input_event("space_tap", count=1, duration_ms=(time.perf_counter() - t_dispatch_start) * 1000.0)
                         else:
-                            finger_names = ["index", "middle", "ring", "pinky"]
                             effective_hand = self.mode_manager.get_effective_handedness(hand)
 
-                            if hand is not None:
-                                tip_indices = [8, 12, 16, 20]
-                                finger_x_pairs = [(finger_names[i], hand.get(tip_indices[i]).x) for i in range(4)]
-                                # Sort left-to-right by visual horizontal position in mirrored view
-                                finger_x_pairs.sort(key=lambda p: p[1])
-                                sorted_finger_names = [p[0] for p in finger_x_pairs]
-
-                                if self.settings.keyboard.finger_mapping == "reversed":
-                                    sorted_finger_names.reverse()
-
-                                try:
-                                    key_slot = sorted_finger_names.index(tapped_finger)
-                                except ValueError:
-                                    key_slot = finger_names.index(tapped_finger)
+                            # Deterministic slot mapping matching the 4 on-screen locked keys
+                            if effective_hand == "Left":
+                                hand_order = ["pinky", "ring", "middle", "index"]
                             else:
-                                if effective_hand == "Left":
-                                    left_order = ["pinky", "ring", "middle", "index"]
-                                    key_slot = left_order.index(tapped_finger) if tapped_finger in left_order else 0
-                                else:
-                                    key_slot = finger_names.index(tapped_finger) if tapped_finger in finger_names else 0
+                                hand_order = ["index", "middle", "ring", "pinky"]
+
+                            if self.settings.keyboard.finger_mapping == "reversed":
+                                hand_order.reverse()
+
+                            try:
+                                key_slot = hand_order.index(tapped_finger)
+                            except ValueError:
+                                key_slot = 0
 
                             if 0 <= key_slot < len(cur_window.keys):
                                 target_key = cur_window.keys[key_slot]
@@ -577,11 +606,26 @@ class PointerVApp(QObject):
                 self.telemetry["kb_row"] = self.mode_manager.row_idx
                 self.telemetry["kb_win_keys"] = [k.label for k in cur_win.keys]
                 self.telemetry["curls"] = curls_dict
+                self.telemetry["is_active"] = self.is_active
                 self.telemetry["is_paused"] = self.mode_manager.is_paused
                 self.telemetry["camera_connected"] = self.camera.is_connected
                 self.telemetry["is_low_light"] = self.camera.is_low_light
                 self.telemetry["is_over_exposed"] = self.camera.is_over_exposed
                 self.telemetry["camera_brightness"] = self.camera.avg_brightness
+                self.telemetry["total_frames"] = self.total_frames
+                self.telemetry["frames_with_hand"] = self.frames_with_hand
+                self.telemetry["active_pos"] = (
+                    round(hand.get(8).x, 3) if hand else 0.0,
+                    round(hand.get(8).y, 3) if hand else 0.0
+                )
+                self.telemetry["screen_coords"] = (eval_res["cursor_x"], eval_res["cursor_y"])
+                self.telemetry["mouse_sendinput_ret"] = self.mouse.last_sendinput_ret
+                self.telemetry["mouse_sendinput_err"] = self.mouse.last_sendinput_err
+                self.telemetry["mouse_last_action"] = self.mouse.last_action
+                self.telemetry["key_sendinput_ret"] = self.keyboard_out.last_sendinput_ret
+                self.telemetry["key_sendinput_err"] = self.keyboard_out.last_sendinput_err
+                self.telemetry["key_last_action"] = self.keyboard_out.last_event_kind
+                self.telemetry["internal_errors"] = list(self.internal_errors)
 
                 # 4. Render HUD Visualization onto frame
                 vis_frame = draw_hud_landmarks(
@@ -671,6 +715,8 @@ class PointerVApp(QObject):
 
             except Exception as e:
                 # Log error safely without leaking data
+                err_msg = f"{time.strftime('%H:%M:%S')} - {type(e).__name__}: {str(e)[:60]}"
+                self.internal_errors.append(err_msg)
                 self.logger.error(f"Error in vision processing worker: {e}")
                 time.sleep(0.02)
 

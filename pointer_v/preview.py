@@ -90,6 +90,7 @@ class CameraPreviewOverlay(QWidget):
         path = QPainterPath()
         path.addRoundedRect(0, 0, target_w, target_h, RADIUS_PANEL, RADIUS_PANEL)
         painter.setClipPath(path)
+        painter.fillRect(0, 0, target_w, target_h, QColor("#0B0E13"))
 
         if frame_bgr is None:
             # Draw offline/reconnecting banner

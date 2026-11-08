@@ -21,7 +21,13 @@ class SoundManager:
 
     def __init__(self, settings):
         self.settings = settings
-        self.sounds_dir = Path(__file__).resolve().parent / "assets" / "sounds"
+        base = Path(sys._MEIPASS) if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS") else Path(__file__).resolve().parent
+        if (base / "pointer_v" / "assets" / "sounds").exists():
+            self.sounds_dir = base / "pointer_v" / "assets" / "sounds"
+        elif (base / "assets" / "sounds").exists():
+            self.sounds_dir = base / "assets" / "sounds"
+        else:
+            self.sounds_dir = Path(__file__).resolve().parent / "assets" / "sounds"
 
     def play(self, sound_name: str, freq_fallback: int = 800, dur_fallback: int = 40):
         if not getattr(self.settings.sound, "enabled", True):

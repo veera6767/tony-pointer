@@ -49,12 +49,14 @@ class MainWindow(QMainWindow):
         recorder: LandmarkRecorder,
         get_status_fn: Callable,
         get_frame_fn: Callable,
+        keyboard_output=None,
         parent=None
     ):
         super().__init__(parent)
         self.settings_manager = settings_manager
         self.settings = settings_manager.config
         self.mouse = mouse_controller
+        self.keyboard_out = keyboard_output
         self.recorder = recorder
         self.get_status = get_status_fn
         self.get_frame = get_frame_fn
@@ -159,8 +161,13 @@ class MainWindow(QMainWindow):
         self.page_about = AboutPage(self.get_status, self)
         self.deck.addWidget(self.page_about)
 
-        # Page 8: Developer Tools (Hidden by default)
-        self.page_dev = DeveloperPage(self.settings, self.recorder, self)
+        # Page 8: Developer Tools (Hidden by default unless toggled)
+        self.page_dev = DeveloperPage(
+            self.settings, self.recorder,
+            mouse_controller=self.mouse,
+            keyboard_output=self.keyboard_out,
+            parent=self
+        )
         self.deck.addWidget(self.page_dev)
 
         body_layout.addWidget(self.deck, stretch=1)
@@ -239,6 +246,8 @@ class MainWindow(QMainWindow):
             self.page_gest.update_telemetry(curls, status_text)
         elif cur_idx == 4:
             self.page_prac.update_telemetry(telem)
+        elif cur_idx == 8:
+            self.page_dev.update_telemetry(telem)
 
     def _restore_geometry(self):
         from PySide6.QtCore import QPoint, QRect, QSize

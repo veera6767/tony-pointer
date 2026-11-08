@@ -12,10 +12,12 @@ block_cipher = None
 mediapipe_datas = collect_data_files('mediapipe')
 
 # Local assets (fonts, icons, images, models, sounds)
-assets_dir = os.path.join(os.path.abspath('.'), 'assets')
+spec_dir = os.path.abspath(SPECPATH)
+assets_dir = os.path.join(spec_dir, 'assets')
 extra_datas = []
 if os.path.exists(assets_dir):
     extra_datas.append((assets_dir, 'assets'))
+    extra_datas.append((assets_dir, 'pointer_v/assets'))
 
 a = Analysis(
     ['main.py'],

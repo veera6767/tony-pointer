@@ -28,19 +28,42 @@ class ModifierState(enum.Enum):
     LOCKED = "LOCKED"     # Double-tap: locked on until tapped again to release
 
 
-# Ctypes structures for SendInput
+# Ctypes structures for Win32 SendInput (aligned to Windows SDK x64 40-byte tagINPUT)
+class MOUSEINPUT(ctypes.Structure):
+    _fields_ = [
+        ("dx", ctypes.c_long),
+        ("dy", ctypes.c_long),
+        ("mouseData", ctypes.c_ulong),
+        ("dwFlags", ctypes.c_ulong),
+        ("time", ctypes.c_ulong),
+        ("dwExtraInfo", ctypes.c_size_t),
+    ]
+
+
 class KEYBDINPUT(ctypes.Structure):
     _fields_ = [
         ("wVk", ctypes.c_ushort),
         ("wScan", ctypes.c_ushort),
         ("dwFlags", ctypes.c_ulong),
         ("time", ctypes.c_ulong),
-        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+        ("dwExtraInfo", ctypes.c_size_t),
+    ]
+
+
+class HARDWAREINPUT(ctypes.Structure):
+    _fields_ = [
+        ("uMsg", ctypes.c_ulong),
+        ("wParamL", ctypes.c_ushort),
+        ("wParamH", ctypes.c_ushort),
     ]
 
 
 class INPUT_UNION(ctypes.Union):
-    _fields_ = [("ki", KEYBDINPUT)]
+    _fields_ = [
+        ("mi", MOUSEINPUT),
+        ("ki", KEYBDINPUT),
+        ("hi", HARDWAREINPUT),
+    ]
 
 
 class INPUT(ctypes.Structure):
@@ -135,6 +158,11 @@ class Win32KeyboardOutput:
         # Optional override for deterministic unit testing
         self._caps_lock_override: Optional[bool] = None
 
+        # Diagnostics (NO KEY NAMES OR CHARACTERS STORED)
+        self.last_sendinput_ret: int = 1
+        self.last_sendinput_err: int = 0
+        self.last_event_kind: str = "IDLE"
+
     def is_caps_lock_on(self) -> bool:
         """Inspects physical Windows Caps Lock toggle status."""
         if self._caps_lock_override is not None:
@@ -149,6 +177,7 @@ class Win32KeyboardOutput:
         return False
 
     def _send_scan(self, scancode: int, is_extended: bool, is_up: bool):
+        self.last_event_kind = "SCAN_UP" if is_up else "SCAN_DOWN"
         if self.send_hook:
             self.send_hook("scan", scancode, is_extended, is_up)
             return
@@ -162,19 +191,24 @@ class Win32KeyboardOutput:
         if is_up:
             flags |= KEYEVENTF_KEYUP
 
-        extra = ctypes.c_ulong(0)
         ki = KEYBDINPUT(
             wVk=0,
             wScan=scancode,
             dwFlags=flags,
             time=0,
-            dwExtraInfo=ctypes.pointer(extra),
+            dwExtraInfo=0,
         )
         inp = INPUT(type=INPUT_KEYBOARD, u=INPUT_UNION(ki=ki))
-        self.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+        ret = self.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+        self.last_sendinput_ret = ret
+        if ret == 0:
+            self.last_sendinput_err = ctypes.windll.kernel32.GetLastError()
+        else:
+            self.last_sendinput_err = 0
 
     def _send_unicode(self, char: str):
         """Sends exact unicode character directly via SendInput."""
+        self.last_event_kind = "UNICODE"
         if self.send_hook:
             self.send_hook("unicode", char, False, False)
             return
@@ -183,7 +217,6 @@ class Win32KeyboardOutput:
             return
 
         code_point = ord(char)
-        extra = ctypes.c_ulong(0)
 
         # Key down
         ki_down = KEYBDINPUT(
@@ -191,10 +224,15 @@ class Win32KeyboardOutput:
             wScan=code_point,
             dwFlags=KEYEVENTF_UNICODE,
             time=0,
-            dwExtraInfo=ctypes.pointer(extra),
+            dwExtraInfo=0,
         )
         inp_down = INPUT(type=INPUT_KEYBOARD, u=INPUT_UNION(ki=ki_down))
-        self.user32.SendInput(1, ctypes.byref(inp_down), ctypes.sizeof(inp_down))
+        ret = self.user32.SendInput(1, ctypes.byref(inp_down), ctypes.sizeof(inp_down))
+        self.last_sendinput_ret = ret
+        if ret == 0:
+            self.last_sendinput_err = ctypes.windll.kernel32.GetLastError()
+        else:
+            self.last_sendinput_err = 0
 
         time.sleep(0.005)
 
@@ -204,7 +242,7 @@ class Win32KeyboardOutput:
             wScan=code_point,
             dwFlags=KEYEVENTF_UNICODE | KEYEVENTF_KEYUP,
             time=0,
-            dwExtraInfo=ctypes.pointer(extra),
+            dwExtraInfo=0,
         )
         inp_up = INPUT(type=INPUT_KEYBOARD, u=INPUT_UNION(ki=ki_up))
         self.user32.SendInput(1, ctypes.byref(inp_up), ctypes.sizeof(inp_up))

@@ -94,11 +94,20 @@ class HandTracker:
     def __init__(self, model_dir: Optional[str] = None):
         base_dir = Path(__file__).resolve().parent
 
-        # 1. Check local assets / app bundle
-        candidate_paths = [
+        # 1. Check local assets / PyInstaller frozen bundle (_MEIPASS)
+        candidate_paths = []
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            meipass_dir = Path(sys._MEIPASS)
+            candidate_paths.extend([
+                meipass_dir / "pointer_v" / "assets" / "models" / "hand_landmarker.task",
+                meipass_dir / "assets" / "models" / "hand_landmarker.task",
+                meipass_dir / "hand_landmarker.task",
+            ])
+
+        candidate_paths.extend([
             base_dir / "assets" / "models" / "hand_landmarker.task",
             base_dir / "hand_landmarker.task",
-        ]
+        ])
 
         # 2. Check %APPDATA%\PointerV\models\
         appdata = os.environ.get("APPDATA")
@@ -130,6 +139,8 @@ class HandTracker:
         self.landmarker = self._create_landmarker()
         self.last_result: Optional[HandFrame] = None
         self.last_seen_time: float = 0.0
+        self._last_timestamp_ms: int = -1
+        self.last_error: Optional[str] = None
 
     def _ensure_model_downloaded(self):
         """Downloads hand_landmarker.task from Google Storage if not yet present."""
@@ -194,6 +205,11 @@ class HandTracker:
         if self.landmarker is None or frame_bgr is None:
             return None
 
+        # Guarantee strictly increasing timestamps for MediaPipe VIDEO mode
+        if timestamp_ms <= self._last_timestamp_ms:
+            timestamp_ms = self._last_timestamp_ms + 1
+        self._last_timestamp_ms = timestamp_ms
+
         import mediapipe as mp
 
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
@@ -201,7 +217,9 @@ class HandTracker:
 
         try:
             result = self.landmarker.detect_for_video(mp_image, timestamp_ms)
-        except Exception:
+            self.last_error = None
+        except Exception as e:
+            self.last_error = f"Landmarker error: {type(e).__name__}"
             return self.last_result
 
         if not result or not result.hand_landmarks or len(result.hand_landmarks) == 0:

@@ -105,19 +105,19 @@ class GestureEngine:
 
         dist_wrist_index_tip = hand.distance_3d(0, 8)
         dist_wrist_index_pip = hand.distance_3d(0, 6)
-        index_extended = dist_wrist_index_tip > dist_wrist_index_pip * 1.15
+        index_extended = dist_wrist_index_tip > dist_wrist_index_pip * 1.10 or hand.angle_deg(5, 6, 8) > 135.0
 
         dist_wrist_middle_tip = hand.distance_3d(0, 12)
         dist_wrist_middle_pip = hand.distance_3d(0, 10)
-        middle_extended = dist_wrist_middle_tip > dist_wrist_middle_pip * 1.15
+        middle_extended = dist_wrist_middle_tip > dist_wrist_middle_pip * 1.10 or hand.angle_deg(9, 10, 12) > 135.0
 
         dist_wrist_ring_tip = hand.distance_3d(0, 16)
         dist_wrist_ring_pip = hand.distance_3d(0, 14)
-        ring_extended = dist_wrist_ring_tip > dist_wrist_ring_pip * 1.15
+        ring_extended = dist_wrist_ring_tip > dist_wrist_ring_pip * 1.05 or hand.angle_deg(13, 14, 16) > 130.0
 
         dist_wrist_pinky_tip = hand.distance_3d(0, 20)
         dist_wrist_pinky_pip = hand.distance_3d(0, 18)
-        pinky_extended = dist_wrist_pinky_tip > dist_wrist_pinky_pip * 1.15
+        pinky_extended = dist_wrist_pinky_tip > dist_wrist_pinky_pip * 1.05 or hand.angle_deg(17, 18, 20) > 130.0
 
         # Check Pinch: distance between thumb tip (4) and index tip (8)
         pinch_dist = hand.distance_3d(4, 8)
@@ -193,10 +193,10 @@ class GestureEngine:
         max_angle = max(angles)
         angle_delta = max_angle - min_angle
         current_angle = angles[-1]
-        rebounded = current_angle > (min_angle + 18.0) and current_angle > 140.0
+        rebounded = current_angle > (min_angle + 16.0) and current_angle > 135.0
 
         cooldown_s = self.settings.gestures.tap_cooldown_ms / 1000.0
-        if angle_delta >= 22.0 and rebounded and (now - self.last_tap_time > cooldown_s):
+        if angle_delta >= 18.0 and rebounded and (now - self.last_tap_time > cooldown_s):
             self.last_tap_time = now
             return True
 
@@ -273,9 +273,9 @@ class GestureEngine:
         self.current_pose = pose
         result["pose"] = pose.value
 
-        # Record index DIP angle on every frame for air-tap flexion trajectory analysis
-        dip_angle = hand.angle_deg(6, 7, 8)
-        self.index_angle_history.append((now, dip_angle))
+        # Record index PIP joint angle on every frame for air-tap flexion trajectory analysis
+        flex_angle = hand.angle_deg(5, 6, 8)
+        self.index_angle_history.append((now, flex_angle))
 
         # In KEYBOARD mode, check for Fist close hold or return to pointing
         if current_mode == "KEYBOARD":

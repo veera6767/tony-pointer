@@ -49,11 +49,23 @@ def capture_all_screenshots():
         "kb_win_keys": ["A", "S", "D", "F"],
         "curls": {"thumb": 0.1, "index": 0.05, "middle": 0.85, "ring": 0.90, "pinky": 0.92},
         "is_paused": False,
+        "is_active": True,
         "camera_connected": True,
         "is_low_light": False,
         "is_over_exposed": False,
         "camera_brightness": 124.0,
         "monitor_count": 1,
+        "total_frames": 1840,
+        "frames_with_hand": 1820,
+        "active_pos": (0.512, 0.428),
+        "screen_coords": (980, 540),
+        "mouse_sendinput_ret": 1,
+        "mouse_sendinput_err": 0,
+        "mouse_last_action": "MOVE",
+        "key_sendinput_ret": 1,
+        "key_sendinput_err": 0,
+        "key_last_action": "IDLE",
+        "internal_errors": [],
     }
 
     win = MainWindow(
@@ -62,6 +74,7 @@ def capture_all_screenshots():
         recorder=recorder,
         get_status_fn=lambda: dummy_telemetry,
         get_frame_fn=lambda: None,
+        keyboard_output=None,
     )
     win.resize(1120, 720)
     win.show()
@@ -112,6 +125,19 @@ def capture_all_screenshots():
     tut_file = out_dir / "tutorial_dialog.png"
     tut_pix.save(str(tut_file), "PNG")
     print(f"Captured: {tut_file.name}")
+
+    # Capture Camera Preview Overlay
+    from preview import CameraPreviewOverlay
+    prev = CameraPreviewOverlay(settings_manager.config)
+    prev.show()
+    import numpy as np
+    dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    prev.update_frame(dummy_frame, fps=59.4)
+    app.processEvents()
+    prev_pix = prev.grab()
+    prev_file = out_dir / "camera_preview_overlay.png"
+    prev_pix.save(str(prev_file), "PNG")
+    print(f"Captured: {prev_file.name}")
 
     print("All screenshots generated successfully.")
 
