@@ -40,10 +40,11 @@ class LandmarkPoint:
 
 class HandFrame:
     """Container for detected landmarks in a video frame."""
-    def __init__(self, landmarks: List[LandmarkPoint], timestamp_ms: int, handedness: str = "Right"):
+    def __init__(self, landmarks: List[LandmarkPoint], timestamp_ms: int, handedness: str = "Right", confidence: float = 1.0):
         self.landmarks = landmarks
         self.timestamp_ms = timestamp_ms
         self.handedness = handedness
+        self.confidence = float(confidence)
 
     def get(self, index: int) -> LandmarkPoint:
         return self.landmarks[index]
@@ -136,6 +137,11 @@ class HandTracker:
         import logging
         logging.getLogger(APP_NAME).info(f"Loaded MediaPipe HandLandmarker model from: {self.model_path}")
 
+        self.is_loaded = False
+        self.load_error: Optional[str] = None
+        self.last_inference_ms: float = 0.0
+        self.last_confidence: float = 0.0
+
         self.landmarker = self._create_landmarker()
         self.last_result: Optional[HandFrame] = None
         self.last_seen_time: float = 0.0
@@ -158,81 +164,98 @@ class HandTracker:
                 self.model_path = local_fallback
 
     def _create_landmarker(self):
-        """Creates MediaPipe HandLandmarker with GPU delegate and CPU fallback."""
+        """Creates MediaPipe HandLandmarker with CPU delegate and in-memory buffer."""
+        import logging
+        import traceback
+        logger = logging.getLogger(APP_NAME)
+
         try:
             import mediapipe as mp
             from mediapipe.tasks import python
             from mediapipe.tasks.python import vision
 
+            # Read model file into memory buffer to avoid Windows path/space/unicode issues
+            model_bytes = Path(self.model_path).read_bytes()
+            if len(model_bytes) < 1000000:
+                raise ValueError(f"Model file at {self.model_path} is incomplete ({len(model_bytes)} bytes)")
+
+            # Use CPU delegate ONLY on Windows (GPU delegate is not supported in mediapipe python on Windows)
             base_options = python.BaseOptions(
-                model_asset_path=self.model_path,
-                delegate=python.BaseOptions.Delegate.GPU,
+                model_asset_buffer=model_bytes,
+                delegate=python.BaseOptions.Delegate.CPU,
             )
             options = vision.HandLandmarkerOptions(
                 base_options=base_options,
                 running_mode=vision.RunningMode.VIDEO,
                 num_hands=1,
-                min_hand_detection_confidence=0.55,
-                min_hand_presence_confidence=0.55,
-                min_tracking_confidence=0.55,
+                min_hand_detection_confidence=0.5,
+                min_hand_presence_confidence=0.5,
+                min_tracking_confidence=0.5,
             )
-            return vision.HandLandmarker.create_from_options(options)
+            lm = vision.HandLandmarker.create_from_options(options)
+            self.is_loaded = True
+            self.load_error = None
+            logger.info("MediaPipe HandLandmarker initialized successfully with CPU delegate.")
+            return lm
         except Exception as e:
-            try:
-                import mediapipe as mp
-                from mediapipe.tasks import python
-                from mediapipe.tasks.python import vision
-
-                base_options = python.BaseOptions(
-                    model_asset_path=self.model_path,
-                    delegate=python.BaseOptions.Delegate.CPU,
-                )
-                options = vision.HandLandmarkerOptions(
-                    base_options=base_options,
-                    running_mode=vision.RunningMode.VIDEO,
-                    num_hands=1,
-                    min_hand_detection_confidence=0.5,
-                    min_hand_presence_confidence=0.5,
-                    min_tracking_confidence=0.5,
-                )
-                return vision.HandLandmarker.create_from_options(options)
-            except Exception as ex2:
-                print(f"[{APP_NAME}] Notice: HandLandmarker offline or in mock mode: {ex2}")
-                return None
-
-    def process_frame(self, frame_bgr: np.ndarray, timestamp_ms: int) -> Optional[HandFrame]:
-        """Runs inference on camera frame and returns HandFrame if hand detected."""
-        if self.landmarker is None or frame_bgr is None:
+            err_details = traceback.format_exc()
+            logger.error(f"Failed to initialize MediaPipe HandLandmarker: {e}\n{err_details}")
+            self.is_loaded = False
+            self.load_error = f"{type(e).__name__}: {str(e)[:80]}"
             return None
 
-        # Guarantee strictly increasing timestamps for MediaPipe VIDEO mode
-        if timestamp_ms <= self._last_timestamp_ms:
-            timestamp_ms = self._last_timestamp_ms + 1
-        self._last_timestamp_ms = timestamp_ms
+    def process_frame(self, frame_bgr: np.ndarray, timestamp_ms: int = 0) -> Optional[HandFrame]:
+        """Runs inference on camera frame and returns HandFrame if hand detected."""
+        if self.landmarker is None or frame_bgr is None or frame_bgr.size == 0:
+            return None
+
+        # Guarantee strictly monotonic millisecond timestamps for MediaPipe VIDEO mode
+        t_mono_ms = int(time.perf_counter() * 1000)
+        if t_mono_ms <= self._last_timestamp_ms:
+            t_mono_ms = self._last_timestamp_ms + 1
+        self._last_timestamp_ms = t_mono_ms
 
         import mediapipe as mp
 
+        t_start = time.perf_counter()
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        frame_rgb = np.ascontiguousarray(frame_rgb, dtype=np.uint8)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
 
         try:
-            result = self.landmarker.detect_for_video(mp_image, timestamp_ms)
+            result = self.landmarker.detect_for_video(mp_image, t_mono_ms)
             self.last_error = None
+            self.last_inference_ms = (time.perf_counter() - t_start) * 1000.0
         except Exception as e:
-            self.last_error = f"Landmarker error: {type(e).__name__}"
-            return self.last_result
+            import traceback
+            self.last_error = f"Landmarker error: {type(e).__name__} ({str(e)[:50]})"
+            import logging
+            logging.getLogger(APP_NAME).warning(f"HandLandmarker detection error: {e}\n{traceback.format_exc()}")
+            return None
 
         if not result or not result.hand_landmarks or len(result.hand_landmarks) == 0:
+            self.last_result = None
             return None
 
         raw_landmarks = result.hand_landmarks[0]
         landmarks = [LandmarkPoint(pt.x, pt.y, pt.z) for pt in raw_landmarks]
 
         handedness = "Right"
+        confidence = 0.95
         if result.handedness and len(result.handedness) > 0 and len(result.handedness[0]) > 0:
-            handedness = result.handedness[0][0].category_name
+            cat = result.handedness[0][0]
+            raw_cat = cat.category_name
+            confidence = getattr(cat, "score", 0.95)
+            # Frame is mirrored horizontally (cv2.flip(frame, 1)), so invert Left <-> Right
+            handedness = "Right" if raw_cat == "Left" else "Left"
 
-        hand_frame = HandFrame(landmarks=landmarks, timestamp_ms=timestamp_ms, handedness=handedness)
+        self.last_confidence = confidence
+        hand_frame = HandFrame(
+            landmarks=landmarks,
+            timestamp_ms=t_mono_ms,
+            handedness=handedness,
+            confidence=confidence
+        )
         self.last_result = hand_frame
         self.last_seen_time = time.perf_counter()
         return hand_frame

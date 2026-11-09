@@ -7,6 +7,7 @@ line up perfectly with physical pixels across mixed-DPI multi-monitor setups.
 
 import ctypes
 from ctypes import wintypes
+import math
 import os
 import sys
 import time
@@ -99,7 +100,11 @@ class MouseController:
     def __init__(self, send_hook: Optional[callable] = None):
         self.is_windows = sys.platform.startswith("win")
         self.is_left_down = False
+        self.left_down_time: float = 0.0
         self.last_pos = (0, 0)
+        self.last_set_pos: Optional[Tuple[int, int]] = None
+        self.yielding_until: float = 0.0
+        self.click_history: List[Tuple[float, bool, int, int]] = []
         self.send_hook = send_hook
         self.monitors: List[Tuple[int, int, int, int]] = []
         self.last_sendinput_ret: int = 1
@@ -230,30 +235,112 @@ class MouseController:
         else:
             self.last_sendinput_err = 0
 
+    def get_cursor_pos(self) -> Tuple[int, int]:
+        """Queries physical cursor coordinates via Win32 GetCursorPos."""
+        if not self.is_windows or not self.user32:
+            return self.last_pos
+        pt = wintypes.POINT()
+        if self.user32.GetCursorPos(ctypes.byref(pt)):
+            return (int(pt.x), int(pt.y))
+        return self.last_pos
+
+    def check_physical_move(self, threshold_px: int = 6, yield_duration_s: float = 1.5) -> bool:
+        """
+        Input arbitration: Detects if user moved the physical touchpad or mouse.
+        Returns True if physical input is active and Pointer V must yield.
+        """
+        now = time.perf_counter()
+        if now < self.yielding_until:
+            return True
+
+        if self.last_set_pos is None:
+            return False
+
+        cx, cy = self.get_cursor_pos()
+        dist = math.hypot(cx - self.last_set_pos[0], cy - self.last_set_pos[1])
+        if dist > threshold_px:
+            self.yielding_until = now + yield_duration_s
+            self.emergency_release()
+            return True
+        return False
+
+    @property
+    def is_yielding(self) -> bool:
+        """Returns True if Pointer V is actively yielding to physical mouse/touchpad."""
+        return time.perf_counter() < self.yielding_until
+
     def move_to(self, screen_x: int, screen_y: int):
-        """Move cursor instantly to absolute desktop coordinates."""
+        """
+        Move cursor to absolute desktop coordinates via SendInput.
+        Applies a 2px dead zone to prevent fighting with sub-pixel jitter.
+        """
+        if self.is_yielding:
+            return
+
+        dx = screen_x - self.last_pos[0]
+        dy = screen_y - self.last_pos[1]
+        if (dx * dx + dy * dy) < 4.0:  # 2 px threshold
+            return
+
         self.last_pos = (screen_x, screen_y)
+        self.last_set_pos = (screen_x, screen_y)
         norm_x, norm_y = self.normalize_to_virtual_desktop(screen_x, screen_y)
         flags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
         self._send_input(flags=flags, dx=norm_x, dy=norm_y, action_name="MOVE")
-        # Direct SetCursorPos ensure cursor movement succeeds even if SendInput flags face UIPI restrictions
-        if self.is_windows and self.user32 and self.last_sendinput_ret == 0:
-            self.user32.SetCursorPos(int(screen_x), int(screen_y))
+
+    def record_click_and_check_breaker(self, is_right: bool, x: int, y: int) -> bool:
+        """
+        Circuit breaker: Checks for unintended rapid click loops.
+        Returns True if circuit breaker tripped.
+        - > 4 clicks within 2.0 s
+        - > 2 right clicks within 5.0 s at same screen position (< 15 px)
+        """
+        now = time.perf_counter()
+        self.click_history.append((now, is_right, x, y))
+        self.click_history = [c for c in self.click_history if now - c[0] <= 6.0]
+
+        clicks_2s = [c for c in self.click_history if now - c[0] <= 2.0]
+        if len(clicks_2s) > 4:
+            self.emergency_release()
+            return True
+
+        if is_right:
+            rc_5s = [c for c in self.click_history if c[1] and now - c[0] <= 5.0]
+            close_rc = [c for c in rc_5s if math.hypot(c[2] - x, c[3] - y) <= 15.0]
+            if len(close_rc) > 2:
+                self.emergency_release()
+                return True
+
+        return False
+
+    def check_brush_lock_timeout(self, max_duration_s: float = 30.0) -> bool:
+        """Auto-releases brush lock if held longer than max_duration_s."""
+        if self.is_left_down:
+            if (time.perf_counter() - self.left_down_time) >= max_duration_s:
+                self.left_up()
+                return True
+        return False
 
     def left_down(self):
         """Press and hold left mouse button down."""
+        if self.is_yielding:
+            return
         if not self.is_left_down:
             self._send_input(flags=MOUSEEVENTF_LEFTDOWN, action_name="LEFT_DOWN")
             self.is_left_down = True
+            self.left_down_time = time.perf_counter()
 
     def left_up(self):
         """Release left mouse button."""
         if self.is_left_down:
             self._send_input(flags=MOUSEEVENTF_LEFTUP, action_name="LEFT_UP")
             self.is_left_down = False
+            self.left_down_time = 0.0
 
     def click(self, x: Optional[int] = None, y: Optional[int] = None):
         """Standard left click (Down then Up)."""
+        if self.is_yielding:
+            return
         if x is not None and y is not None:
             self.move_to(x, y)
         self._send_input(flags=MOUSEEVENTF_LEFTDOWN, action_name="CLICK_DOWN")
@@ -262,6 +349,8 @@ class MouseController:
 
     def double_click(self, x: Optional[int] = None, y: Optional[int] = None):
         """Rapid double left click."""
+        if self.is_yielding:
+            return
         if x is not None and y is not None:
             self.move_to(x, y)
         self.click()
@@ -270,6 +359,8 @@ class MouseController:
 
     def right_click(self, x: Optional[int] = None, y: Optional[int] = None):
         """Right click for context menus."""
+        if self.is_yielding:
+            return
         if x is not None and y is not None:
             self.move_to(x, y)
         self._send_input(flags=MOUSEEVENTF_RIGHTDOWN, action_name="RIGHT_DOWN")
@@ -278,6 +369,8 @@ class MouseController:
 
     def scroll(self, amount: int):
         """Scroll mouse wheel."""
+        if self.is_yielding:
+            return
         delta = int(amount * 120)
         self._send_input(flags=MOUSEEVENTF_WHEEL, data=delta, action_name="SCROLL")
 
@@ -288,6 +381,8 @@ class MouseController:
         self._send_input(flags=MOUSEEVENTF_LEFTUP)
         self._send_input(flags=MOUSEEVENTF_RIGHTUP)
         self._send_input(flags=MOUSEEVENTF_MIDDLEUP)
+        self.is_left_down = False
+        self.left_down_time = 0.0
         self.is_left_down = False
 
     def get_active_process_name(self) -> Optional[str]:
@@ -335,6 +430,11 @@ class MouseController:
         try:
             hwnd = self.user32.GetForegroundWindow()
             if not hwnd:
+                return False
+
+            # Never treat explorer or Pointer V windows as game mode
+            proc_name = self.get_active_process_name().lower()
+            if proc_name in ("explorer.exe", "pointerv.exe", "python.exe", "taskmgr.exe", "desktop"):
                 return False
 
             rect = RECT()

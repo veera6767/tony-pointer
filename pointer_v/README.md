@@ -64,10 +64,25 @@ Pointer V is a native Windows 10/11 system utility built with Python 3.12, PySid
 
 ---
 
+## Standalone Distribution & Installer
+
+- **Inno Setup Single Installer**: `installers/Output/PointerV-Setup-2.0.0.exe`
+- **Recipient Share Folder**: `share/PointerV-Setup-2.0.0.exe` with accompanying `README_FIRST.txt` and SHA-256 checksum in `share/PointerV-Setup-2.0.0.exe.sha256`.
+
+---
+
 ## Development & Testing
 
 ```bash
-# Activate virtual environment
+# Run the complete test suite (38 automated unit & integration tests)
+py -3.12 -m pytest tests/
+
+# Run the live MediaPipe camera diagnostic self-test
+py -3.12 scripts/mediapipe_selftest.py
+
+# Build standalone PyInstaller distribution
+cd pointer_v && build_exe.bat
+```
 venv\Scripts\activate
 
 # Install dependencies

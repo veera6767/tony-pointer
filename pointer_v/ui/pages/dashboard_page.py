@@ -104,6 +104,41 @@ class DashboardPage(QWidget):
         strip_layout.addStretch()
         layout.addWidget(self.pipeline_strip)
 
+        # Top Warning Banner for Model Failure
+        self.model_banner = QLabel("⚠ Hand Landmarker model failed to load. Check assets/models/hand_landmarker.task.")
+        self.model_banner.setFixedHeight(30)
+        self.model_banner.setAlignment(Qt.AlignCenter)
+        self.model_banner.setStyleSheet(f"background-color: #2D1515; color: {RED}; border: 1px solid rgba(240, 80, 110, 0.4); border-radius: {RADIUS_CONTROL}px; font-size: 11px; font-weight: 600; padding: 4px;")
+        self.model_banner.hide()
+        layout.addWidget(self.model_banner)
+
+        # 1.6 First-Run Pipeline Checklist
+        self.checklist_card = QFrame()
+        self.checklist_card.setStyleSheet(f"background-color: {BG1_PANELS}; border: 1px solid {BORDER}; border-radius: {RADIUS_PANEL}px;")
+        chk_layout = QHBoxLayout(self.checklist_card)
+        chk_layout.setContentsMargins(16, 10, 16, 10)
+        chk_layout.setSpacing(14)
+
+        chk_title = QLabel("Pipeline Checklist:")
+        chk_title.setFont(get_ui_font(11, bold=True))
+        chk_title.setStyleSheet(f"color: {TEXT_PRIMARY};")
+        chk_layout.addWidget(chk_title)
+
+        self.chk_1_cam = QLabel("1 Camera: --")
+        self.chk_2_model = QLabel("2 Model: --")
+        self.chk_3_hand = QLabel("3 Hand: --")
+        self.chk_4_on = QLabel("4 Pointer V: OFF")
+        self.chk_5_move = QLabel("5 Cursor: --")
+        self.chk_6_kb = QLabel("6 Keyboard: Closed")
+
+        for c in (self.chk_1_cam, self.chk_2_model, self.chk_3_hand, self.chk_4_on, self.chk_5_move, self.chk_6_kb):
+            c.setFont(get_mono_font(10, bold=True))
+            c.setStyleSheet(f"color: {TEXT_SECONDARY};")
+            chk_layout.addWidget(c)
+
+        chk_layout.addStretch()
+        layout.addWidget(self.checklist_card)
+
         # 2. Main Grid: Left Video Preview, Right Telemetry & Actions
         grid = QGridLayout()
         grid.setSpacing(16)
@@ -235,8 +270,26 @@ class DashboardPage(QWidget):
             self.strip_master.setText("Pipeline: ACTIVE (ON)")
             self.strip_master.setStyleSheet(f"color: {GREEN};")
 
-        if hand_detected:
-            self.strip_hand.setText(f"Hand: {handedness or 'Detected'}")
+        # Model Load Status & Banner
+        model_loaded = telemetry.get("model_loaded", True)
+        model_error = telemetry.get("model_error")
+        if not model_loaded:
+            self.model_banner.setText(f"⚠ Hand model failed to load: {model_error or 'File not found'}. Tracking unavailable.")
+            self.model_banner.show()
+            self.chk_2_model.setText("2 Model: FAILED")
+            self.chk_2_model.setStyleSheet(f"color: {RED};")
+        else:
+            self.model_banner.hide()
+            self.chk_2_model.setText("2 Model: LOADED")
+            self.chk_2_model.setStyleSheet(f"color: {GREEN};")
+
+        if not model_loaded:
+            self.strip_hand.setText("Hand: Model Offline")
+            self.strip_hand.setStyleSheet(f"color: {RED};")
+            self.strip_target.setText("Target: (--, --)")
+        elif hand_detected:
+            conf = int(telemetry.get("hand_confidence", 0.95) * 100)
+            self.strip_hand.setText(f"Hand: {handedness or 'Detected'} ({conf}%)")
             self.strip_hand.setStyleSheet(f"color: {CYAN};")
             self.strip_target.setText(f"Target: ({scr_pos[0]}, {scr_pos[1]})")
         else:
@@ -247,6 +300,25 @@ class DashboardPage(QWidget):
         out_ok = (m_ret > 0 and k_ret > 0)
         self.strip_output.setText(f"SendInput: {'OK' if out_ok else 'WARN'}")
         self.strip_output.setStyleSheet(f"color: {GREEN if out_ok else RED};")
+
+        # Update First-Run Pipeline Checklist
+        cam_ok = telemetry.get("camera_connected", True)
+        self.chk_1_cam.setText("1 Camera: OK" if cam_ok else "1 Camera: ERR")
+        self.chk_1_cam.setStyleSheet(f"color: {GREEN if cam_ok else RED};")
+
+        self.chk_3_hand.setText(f"3 Hand: {handedness or 'OK'}" if hand_detected else "3 Hand: Searching")
+        self.chk_3_hand.setStyleSheet(f"color: {GREEN if hand_detected else TEXT_SECONDARY};")
+
+        self.chk_4_on.setText("4 Pointer V: ON" if is_active else "4 Pointer V: OFF")
+        self.chk_4_on.setStyleSheet(f"color: {GREEN if is_active else AMBER};")
+
+        cursor_moving = (is_active and not is_paused and pose == "POINTING" and hand_detected)
+        self.chk_5_move.setText("5 Cursor: MOVING" if cursor_moving else "5 Cursor: Standby")
+        self.chk_5_move.setStyleSheet(f"color: {GREEN if cursor_moving else TEXT_SECONDARY};")
+
+        kb_open = (mode == "KEYBOARD")
+        self.chk_6_kb.setText("6 Keyboard: OPEN" if kb_open else "6 Keyboard: Closed")
+        self.chk_6_kb.setStyleSheet(f"color: {VIOLET if kb_open else TEXT_SECONDARY};")
 
         self.lbl_fps.setText(f"FPS: {fps:.1f}")
         self.lbl_latency.setText(f"Latency: {latency:.1f} ms")

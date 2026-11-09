@@ -12,3 +12,6 @@ coverage/
 __pycache__/
 *.pyc
 .pytest_cache/
+pointer_v/_backups/
+share/*.exe
+

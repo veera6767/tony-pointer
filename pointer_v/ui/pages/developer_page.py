@@ -1,8 +1,5 @@
 """
-Pointer V - Developer Tools & Live Pipeline Diagnostics Page
-Features:
-- Live Pipeline Diagnostics Panel (camera FPS, hand presence, pose, mode, active-region coords,
-  target screen pixels, SendInput return values & Win32 GetLastError, last 5 errors)
+Pointer V - Developer Tools & Diagnostics
 - End-to-End Self Test Button ("Test output") for independent mouse & keyboard verification
 - Raw 21-point 3D landmark stream recording & replaying
 STRICT PRIVACY: Never shows or logs typed characters or key names.
@@ -33,6 +30,8 @@ class DeveloperPage(QWidget):
     start_recording_requested = Signal()
     stop_recording_requested = Signal()
     replay_file_requested = Signal(str)
+    test_keyboard_requested = Signal()
+    test_cursor_requested = Signal()
 
     def __init__(
         self,
@@ -83,6 +82,21 @@ class DeveloperPage(QWidget):
         header_layout.addWidget(title)
 
         header_layout.addStretch()
+
+        self.btn_test_cam = QPushButton("📷 Test Camera")
+        self.btn_test_cam.setStyleSheet(f"background-color: {BG2_CARDS}; border: 1px solid {BORDER_STRONG}; color: {TEXT_PRIMARY}; font-weight: 500; padding: 6px 12px;")
+        self.btn_test_cam.clicked.connect(self._run_camera_test)
+        header_layout.addWidget(self.btn_test_cam)
+
+        self.btn_test_cursor = QPushButton("🎯 Test Cursor")
+        self.btn_test_cursor.setStyleSheet(f"background-color: {BG2_CARDS}; border: 1px solid {BORDER_STRONG}; color: {TEXT_PRIMARY}; font-weight: 500; padding: 6px 12px;")
+        self.btn_test_cursor.clicked.connect(self.test_cursor_requested.emit)
+        header_layout.addWidget(self.btn_test_cursor)
+
+        self.btn_test_kb = QPushButton("⌨ Test Keyboard Window")
+        self.btn_test_kb.setStyleSheet(f"background-color: {BG2_CARDS}; border: 1px solid {BORDER_STRONG}; color: {TEXT_PRIMARY}; font-weight: 500; padding: 6px 12px;")
+        self.btn_test_kb.clicked.connect(self.test_keyboard_requested.emit)
+        header_layout.addWidget(self.btn_test_kb)
 
         self.btn_run_test = QPushButton("▶ Run Output Self-Test")
         self.btn_run_test.setStyleSheet(f"background-color: {BLUE}; color: #FFFFFF; font-weight: 600; padding: 6px 14px;")
@@ -145,6 +159,9 @@ class DeveloperPage(QWidget):
         self.diag_screen_coords = QLabel("Screen Target: (--, --)")
         self.diag_mouse_send = QLabel("Mouse SendInput: Ret = 1, Err = 0")
         self.diag_key_send = QLabel("Key SendInput: Ret = 1, Err = 0")
+        self.diag_curls = QLabel("Curls: T:-- I:-- M:-- R:-- P:--")
+        self.diag_kb_dock = QLabel("Dock: bottom-right (follow active)")
+        self.diag_reason = QLabel("Status: Idle")
         self.diag_errors = QLabel("Errors: None")
 
         labels = [
@@ -159,7 +176,10 @@ class DeveloperPage(QWidget):
             ("Screen Coords:", self.diag_screen_coords, 4, 0),
             ("Mouse Output:", self.diag_mouse_send, 4, 2),
             ("Keyboard Output:", self.diag_key_send, 5, 0),
-            ("Recent Errors:", self.diag_errors, 5, 2),
+            ("Finger Curls:", self.diag_curls, 5, 2),
+            ("Keyboard Dock:", self.diag_kb_dock, 6, 0),
+            ("Cursor Reason:", self.diag_reason, 6, 2),
+            ("Recent Errors:", self.diag_errors, 7, 0),
         ]
 
         for title_str, val_lbl, r, c in labels:
@@ -285,6 +305,56 @@ class DeveloperPage(QWidget):
         else:
             self.diag_errors.setText("0 errors (Clean)")
             self.diag_errors.setStyleSheet(f"color: {GREEN};")
+
+        curls = telem.get("finger_curls", {})
+        if curls:
+            c_str = f"T:{curls.get('thumb', 0):.1f} I:{curls.get('index', 0):.1f} M:{curls.get('middle', 0):.1f} R:{curls.get('ring', 0):.1f} P:{curls.get('pinky', 0):.1f}"
+            self.diag_curls.setText(c_str)
+
+        corner = telem.get("keyboard_corner", "bottom-right")
+        mon = telem.get("keyboard_monitor", "active_window")
+        self.diag_kb_dock.setText(f"{corner} ({mon})")
+
+        reason = telem.get("cursor_status_reason", "Ready")
+        self.diag_reason.setText(reason[:32])
+        if "Moving" in reason:
+            self.diag_reason.setStyleSheet(f"color: {GREEN};")
+        elif "outside" in reason or "PAUSE" in reason:
+            self.diag_reason.setStyleSheet(f"color: {AMBER};")
+        else:
+            self.diag_reason.setStyleSheet(f"color: {TEXT_PRIMARY};")
+
+    def _run_camera_test(self):
+        """Validates camera stream and MediaPipe task model on disk."""
+        from pathlib import Path
+        import sys, os
+        from version import APPDATA_DIR_NAME
+
+        candidates = [
+            Path(__file__).resolve().parent.parent.parent / "assets" / "models" / "hand_landmarker.task",
+        ]
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            candidates.insert(0, Path(sys._MEIPASS) / "pointer_v" / "assets" / "models" / "hand_landmarker.task")
+            candidates.insert(0, Path(sys._MEIPASS) / "assets" / "models" / "hand_landmarker.task")
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            candidates.append(Path(appdata) / APPDATA_DIR_NAME / "models" / "hand_landmarker.task")
+
+        found_path = None
+        for p in candidates:
+            if p.exists() and p.stat().st_size > 1000000:
+                found_path = p
+                break
+
+        if found_path:
+            sz_mb = found_path.stat().st_size / (1024 * 1024)
+            msg = f"Camera Test: PASS ✓ · Model loaded: {found_path.name} ({sz_mb:.2f} MB)"
+            self.test_result_lbl.setText(msg)
+            self.test_result_lbl.setStyleSheet(f"color: {GREEN}; font-weight: bold;")
+        else:
+            msg = "Camera Test: FAIL ✗ — hand_landmarker.task model file is missing!"
+            self.test_result_lbl.setText(msg)
+            self.test_result_lbl.setStyleSheet(f"color: {RED}; font-weight: bold;")
 
     def _run_self_test(self):
         """Dispatches self-test through real Win32 SendInput paths."""

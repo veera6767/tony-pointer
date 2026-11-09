@@ -41,6 +41,9 @@ class MainWindow(QMainWindow):
     camera_device_changed = Signal(int, str)
     fps_cap_changed = Signal(int)
     monitor_changed = Signal(int)
+    restart_admin_requested = Signal()
+    app_quit_requested = Signal()
+    test_cursor_requested = Signal()
 
     def __init__(
         self,
@@ -94,7 +97,7 @@ class MainWindow(QMainWindow):
         self.title_bar = CustomTitleBar(self)
         self.title_bar.minimize_clicked.connect(self.showMinimized)
         self.title_bar.maximize_clicked.connect(self._toggle_maximize)
-        self.title_bar.close_clicked.connect(self.hide)  # Close minimizes to tray
+        self.title_bar.close_clicked.connect(self._on_close_clicked)
         root_layout.addWidget(self.title_bar)
 
         # 1.1 Camera Disconnect Reconnect Warning Banner
@@ -150,6 +153,7 @@ class MainWindow(QMainWindow):
         # Page 5: Settings
         self.page_set = SettingsPage(self.settings_manager, self)
         self.page_set.settings_changed.connect(self._on_settings_saved)
+        self.page_set.restart_admin_requested.connect(self.restart_admin_requested.emit)
         self.deck.addWidget(self.page_set)
 
         # Page 6: Calibration
@@ -168,6 +172,8 @@ class MainWindow(QMainWindow):
             keyboard_output=self.keyboard_out,
             parent=self
         )
+        self.page_dev.test_keyboard_requested.connect(self.toggle_keyboard_requested.emit)
+        self.page_dev.test_cursor_requested.connect(self.test_cursor_requested.emit)
         self.deck.addWidget(self.page_dev)
 
         body_layout.addWidget(self.deck, stretch=1)
@@ -218,12 +224,21 @@ class MainWindow(QMainWindow):
         latency = telem.get("latency_ms", 0.0)
         mode = telem.get("mode", "POINTER")
         is_paused = telem.get("is_paused", False)
+        is_yielding = telem.get("is_yielding", False)
+        is_active = telem.get("is_active", False)
+        raw_hand = telem.get("raw_hand")
         cam_conn = telem.get("camera_connected", True)
-        curls = telem.get("curls", {})
+        curls = telem.get("finger_curls", telem.get("curls", {}))
         status_text = telem.get("status_text", "NONE")
 
-        # Update Title Bar & Status Bar
-        self.title_bar.mode_chip.set_status(mode, is_paused)
+        # Update Title Bar & Status Bar with input arbitration status
+        self.title_bar.mode_chip.set_status(
+            mode,
+            is_paused=is_paused,
+            is_yielding=is_yielding,
+            hand_visible=(raw_hand is not None),
+            is_active=is_active
+        )
         self.status_bar.update_telemetry(fps, latency, cam_conn, is_paused)
 
         # Show camera disconnect banner if camera is offline
@@ -246,6 +261,8 @@ class MainWindow(QMainWindow):
             self.page_gest.update_telemetry(curls, status_text)
         elif cur_idx == 4:
             self.page_prac.update_telemetry(telem)
+        elif cur_idx == 6:
+            self.page_calib.update_hand(raw_hand)
         elif cur_idx == 8:
             self.page_dev.update_telemetry(telem)
 
@@ -277,11 +294,21 @@ class MainWindow(QMainWindow):
             else:
                 self.move(100, 100)
 
+    def _on_close_clicked(self):
+        if getattr(self.settings, "close_to_tray", False):
+            self.hide()
+        else:
+            self.app_quit_requested.emit()
+
     def closeEvent(self, event):
-        # Save geometry
         pos = self.pos()
         size = self.size()
         self.settings.window_geometry["main"] = [pos.x(), pos.y(), size.width(), size.height()]
         self.settings_manager.save()
-        super().closeEvent(event)
+        if getattr(self.settings, "close_to_tray", False):
+            event.ignore()
+            self.hide()
+        else:
+            self.app_quit_requested.emit()
+            event.accept()
 

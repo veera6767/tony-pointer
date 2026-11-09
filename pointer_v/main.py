@@ -44,13 +44,14 @@ from version import (
 
 class WorkerSignals(QObject):
     """Thread-safe Qt signal bridge between background vision loop and main Qt UI."""
-    cursor_updated = Signal(int, int, str, float)
+    cursor_updated = Signal(int, int, str, float, float, str)
     click_animated = Signal(bool)
     frame_updated = Signal(object, float)
     keyboard_updated = Signal(object, int, int, object, bool)
     key_typed = Signal(str, str)
     telemetry_updated = Signal()
     tray_notification_requested = Signal(str, str)
+    toggle_active_requested = Signal(bool, bool)
 
 
 class PointerVApp(QObject):
@@ -117,6 +118,7 @@ class PointerVApp(QObject):
         self.signals.keyboard_updated.connect(self.keyboard_overlay.update_state)
         self.signals.key_typed.connect(self.keyboard_overlay.trigger_key_flash)
         self.signals.tray_notification_requested.connect(self._show_tray_message)
+        self.signals.toggle_active_requested.connect(self._handle_toggle_active)
 
         # Master Mode Toggle
         self.is_active = False
@@ -179,6 +181,20 @@ class PointerVApp(QObject):
         self.main_window.camera_device_changed.connect(self._on_camera_device_changed)
         self.main_window.fps_cap_changed.connect(self._on_fps_cap_changed)
         self.main_window.monitor_changed.connect(self._on_monitor_changed)
+        self.main_window.restart_admin_requested.connect(self.restart_as_admin)
+        self.main_window.app_quit_requested.connect(self.shutdown)
+        self.main_window.test_cursor_requested.connect(self.cursor_overlay.start_test_animation)
+
+        # UI Thread Watchdog: Dumps stacks if UI thread stalls > 2s
+        import faulthandler
+        try:
+            faulthandler.enable()
+        except Exception:
+            pass
+        self.watchdog_timer = QTimer(self)
+        self.watchdog_timer.timeout.connect(self._reset_watchdog)
+        self.watchdog_timer.start(1000)
+        self._reset_watchdog()
 
         # 6. System Tray Integration
         self._setup_tray()
@@ -305,14 +321,25 @@ class PointerVApp(QObject):
         self._update_keyboard_visibility(new_active)
         self._update_tray_visuals()
 
+    def _reset_watchdog(self):
+        """Pet the watchdog timer. If UI thread stalls > 2s, faulthandler dumps tracebacks."""
+        import faulthandler
+        try:
+            faulthandler.dump_traceback_later(timeout=2, exit=False)
+        except Exception:
+            pass
+
+    def _handle_toggle_active(self, active: bool, hide_window: bool):
+        self.set_active(active, hide_window=hide_window)
+
     def _setup_hotkeys(self):
         try:
-            keyboard.add_hotkey(self.settings.hotkey_toggle, lambda: self.set_active(not self.is_active, hide_window=True))
-            keyboard.add_hotkey(self.settings.keyboard.hotkey_keyboard, self._toggle_keyboard_mode)
-            keyboard.add_hotkey(self.settings.keyboard.hotkey_zone_toggle, self._toggle_keyboard_zone)
-            keyboard.add_hotkey(self.settings.hotkey_paint, self._toggle_paint_mode)
-            keyboard.add_hotkey(getattr(self.settings, "hotkey_pause", "ctrl+alt+space"), self._toggle_pause)
-            keyboard.add_hotkey("esc", self._emergency_unlock)
+            keyboard.add_hotkey(self.settings.hotkey_toggle, lambda: self.signals.toggle_active_requested.emit(not self.is_active, True))
+            keyboard.add_hotkey(self.settings.keyboard.hotkey_keyboard, lambda: QTimer.singleShot(0, self._toggle_keyboard_mode))
+            keyboard.add_hotkey(self.settings.keyboard.hotkey_zone_toggle, lambda: QTimer.singleShot(0, self._toggle_keyboard_zone))
+            keyboard.add_hotkey(self.settings.hotkey_paint, lambda: QTimer.singleShot(0, self._toggle_paint_mode))
+            keyboard.add_hotkey(getattr(self.settings, "hotkey_pause", "ctrl+alt+space"), lambda: QTimer.singleShot(0, self._toggle_pause))
+            keyboard.add_hotkey("esc", lambda: QTimer.singleShot(0, self._emergency_unlock))
         except Exception as e:
             self.logger.warning(f"Could not bind global hotkeys: {e}")
 
@@ -421,16 +448,27 @@ class PointerVApp(QObject):
 
     def _update_keyboard_visibility(self, visible: bool):
         if visible and self.is_active:
-            vx, vy, vw, vh = self.target_bounds
-            kw = self.keyboard_overlay.width()
-            kh = self.keyboard_overlay.height()
-            kx = vx + (vw - kw) // 2
-            ky = vy + vh - kh - 40
-            self.keyboard_overlay.move(kx, ky)
-            self.keyboard_overlay.show()
+            self.keyboard_overlay.animate_show()
+            from PySide6.QtCore import QRect
+            self.camera_overlay.dodge_rect(QRect(self.keyboard_overlay.pos(), self.keyboard_overlay.size()))
+            self.cursor_overlay.hide()
         else:
-            self.keyboard_overlay.hide()
+            self.keyboard_overlay.animate_hide()
             self.keyboard_out.release_all_modifiers()
+            if self.is_active and self.mode_manager.mode == AppMode.POINTER:
+                self.cursor_overlay.show()
+
+    def restart_as_admin(self):
+        """Relaunches Pointer V with elevated Administrator privileges."""
+        import ctypes
+        if sys.platform.startswith("win"):
+            try:
+                exe = sys.executable if getattr(sys, "frozen", False) else sys.executable
+                args = "" if getattr(sys, "frozen", False) else f'"{os.path.abspath(sys.argv[0])}"'
+                ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, args, None, 1)
+                self.shutdown()
+            except Exception as e:
+                self.logger.error(f"Failed to elevate to Administrator: {e}")
 
     def _show_tray_message(self, title: str, message: str):
         self.tray.showMessage(title, message, QSystemTrayIcon.Information, 2000)
@@ -461,14 +499,23 @@ class PointerVApp(QObject):
         while self.running:
             try:
                 loop_start = time.perf_counter()
+
+                # Stage 1: Camera capture
+                t_cap_start = time.perf_counter()
                 frame, ts = self.camera.get_frame()
+                t_cap_ms = (time.perf_counter() - t_cap_start) * 1000.0
 
                 if frame is None:
                     time.sleep(0.005)
                     continue
 
                 self.total_frames += 1
+
+                # Stage 2: MediaPipe inference
+                t_inf_start = time.perf_counter()
                 hand = self.tracker.process_frame(frame, ts)
+                t_inf_ms = (time.perf_counter() - t_inf_start) * 1000.0
+
                 if hand is not None:
                     self.frames_with_hand += 1
                     # Auto-resume if tracking was previously paused due to hand absence
@@ -479,13 +526,14 @@ class PointerVApp(QObject):
                         self.signals.tray_notification_requested.emit(APP_NAME, "Hand detected: Tracking resumed")
                         self._update_tray_visuals()
 
-                infer_ms = (time.perf_counter() - loop_start) * 1000.0
+                infer_ms = t_inf_ms
 
                 # Record landmarks if developer recording is active
                 if self.recorder.is_recording:
                     self.recorder.record_frame(hand)
 
-                # 1. Evaluate Poses & Mode Transitions
+                # Stage 3: Gesture Evaluation
+                t_gest_start = time.perf_counter()
                 current_mode_name = self.mode_manager.mode.value
                 eval_res = self.gesture_engine.process(
                     hand=hand,
@@ -493,8 +541,28 @@ class PointerVApp(QObject):
                     filter_2d=self.filter,
                     current_mode=current_mode_name,
                 )
+                t_gest_ms = (time.perf_counter() - t_gest_start) * 1000.0
 
                 action = eval_res["action"]
+
+                # Input arbitration check: Detect physical touchpad/mouse movement
+                is_yielding = self.mouse.check_physical_move(
+                    threshold_px=getattr(self.settings.gestures, "yield_distance_px", 6),
+                    yield_duration_s=getattr(self.settings.gestures, "yield_duration_s", 1.5),
+                )
+                if is_yielding:
+                    eval_res["status_text"] = "YIELDING to touchpad"
+
+                # Check safety timeout for held brush lock (max 30s)
+                if self.mouse.check_brush_lock_timeout(
+                    max_duration_s=getattr(self.settings.gestures, "max_brush_lock_s", 30.0)
+                ):
+                    self.gesture_engine.brush_locked = False
+                    eval_res["brush_locked"] = False
+                    self.sound.warning()
+                    self.signals.tray_notification_requested.emit(
+                        APP_NAME, "Safety: Brush lock auto-released (30s max hold)."
+                    )
 
                 # Handle Auto-pause on hand lost
                 if action == GestureAction.AUTO_PAUSE.value and not self.mode_manager.is_paused:
@@ -524,8 +592,8 @@ class PointerVApp(QObject):
                     self._update_keyboard_visibility(False)
                     self.sound.unlock()
 
-                # Safety release on tracking lost
-                if not eval_res["hand_visible"]:
+                # Safety release on tracking lost or pause
+                if not eval_res["hand_visible"] or self.mode_manager.is_paused:
                     self.emergency_release_all()
 
                 # 2. KEYBOARD MODE PROCESSING
@@ -593,6 +661,133 @@ class PointerVApp(QObject):
                         bounce_triggered
                     )
 
+                # Stage 4: Input Output Dispatch
+                t_out_start = time.perf_counter()
+
+                # POINTER MODE: Dispatch Mouse Events (if active, not paused, and not yielding)
+                if self.is_active and self.mode_manager.mode == AppMode.POINTER and not self.mode_manager.is_paused:
+                    cx = eval_res["cursor_x"]
+                    cy = eval_res["cursor_y"]
+
+                    can_move = (
+                        eval_res["hand_visible"]
+                        and eval_res.get("in_active_region", True)
+                        and not is_yielding
+                        and eval_res["pose"] in (PoseType.POINTING.value, PoseType.TWO_FINGER.value)
+                        and action != GestureAction.PAUSE.value
+                    )
+
+                    if can_move:
+                        self.mouse.move_to(cx, cy)
+
+                    # Update cursor overlay via Qt signal
+                    overlay_state = "NORMAL"
+                    if not eval_res["hand_visible"]:
+                        overlay_state = "LOST"
+                    elif is_yielding:
+                        overlay_state = "YIELDING"
+                    elif eval_res["brush_locked"]:
+                        overlay_state = "BRUSH_LOCKED"
+                    elif action == GestureAction.SINGLE_CLICK.value:
+                        overlay_state = "CLICK"
+                    elif action == GestureAction.DOUBLE_CLICK.value:
+                        overlay_state = "DOUBLE_CLICK"
+
+                    right_click_prog = eval_res.get("right_click_progress", 0.0)
+                    palm_prog = eval_res.get("open_palm_progress", 0.0)
+                    fist_prog = eval_res.get("fist_pause_progress", 0.0)
+
+                    hold_prog = max(right_click_prog, palm_prog, fist_prog)
+                    hold_kind = (
+                        "RIGHT_CLICK" if right_click_prog > 0.0
+                        else ("KEYBOARD" if palm_prog > 0.0
+                        else ("PAUSE" if fist_prog > 0.0 else ""))
+                    )
+
+                    self.signals.cursor_updated.emit(
+                        cx, cy, overlay_state, eval_res["dwell_progress"], hold_prog, hold_kind
+                    )
+
+                    # Mouse input dispatches with Circuit Breaker
+                    if not is_yielding and eval_res.get("in_active_region", True):
+                        if action == GestureAction.SINGLE_CLICK.value:
+                            tripped = self.mouse.record_click_and_check_breaker(False, cx, cy)
+                            if tripped:
+                                self.mode_manager.toggle_pause(force_state=True)
+                                self.emergency_release_all()
+                                self.sound.warning()
+                                self.signals.tray_notification_requested.emit(
+                                    APP_NAME, "Pointer V paused: possible click loop."
+                                )
+                            else:
+                                self.mouse.click(cx, cy)
+                                self.signals.click_animated.emit(False)
+                                self.sound.key_click()
+                                log_input_event("click_left", count=1)
+
+                        elif action == GestureAction.DOUBLE_CLICK.value:
+                            tripped = self.mouse.record_click_and_check_breaker(False, cx, cy)
+                            if tripped:
+                                self.mode_manager.toggle_pause(force_state=True)
+                                self.emergency_release_all()
+                                self.sound.warning()
+                                self.signals.tray_notification_requested.emit(
+                                    APP_NAME, "Pointer V paused: possible click loop."
+                                )
+                            else:
+                                self.mouse.double_click(cx, cy)
+                                self.signals.click_animated.emit(True)
+                                self.sound.double_click()
+                                log_input_event("double_click", count=1)
+
+                        elif action == GestureAction.RIGHT_CLICK.value:
+                            tripped = self.mouse.record_click_and_check_breaker(True, cx, cy)
+                            if tripped:
+                                self.mode_manager.toggle_pause(force_state=True)
+                                self.emergency_release_all()
+                                self.sound.warning()
+                                self.signals.tray_notification_requested.emit(
+                                    APP_NAME, "Pointer V paused: possible click loop."
+                                )
+                            else:
+                                self.mouse.right_click(cx, cy)
+                                self.sound.key_click()
+                                log_input_event("click_right", count=1)
+
+                        elif action == GestureAction.SCROLL.value:
+                            delta = eval_res.get("scroll_delta", 0)
+                            self.mouse.scroll(delta)
+
+                        elif action == GestureAction.BRUSH_LOCK_TOGGLE.value:
+                            self.mouse.left_down()
+                            self.sound.lock()
+                            log_input_event("brush_lock_down", count=1)
+
+                        elif action == GestureAction.BRUSH_UNLOCK.value:
+                            self.mouse.left_up()
+                            self.sound.unlock()
+                            log_input_event("brush_lock_up", count=1)
+
+                t_out_ms = (time.perf_counter() - t_out_start) * 1000.0
+
+                # Stage 5: Render HUD Visualization onto frame
+                t_vis_start = time.perf_counter()
+                vis_frame = draw_hud_landmarks(
+                    frame_bgr=frame,
+                    hand=hand,
+                    active_region=self.settings.active_region,
+                    status_text=eval_res["status_text"],
+                    dwell_progress=eval_res["dwell_progress"],
+                    brush_locked=eval_res["brush_locked"],
+                    pause_progress=eval_res.get("fist_pause_progress", 0.0),
+                    is_paused=self.mode_manager.is_paused,
+                )
+                thumb = cv2.resize(vis_frame, (360, 202), interpolation=cv2.INTER_AREA)
+                self.latest_vis_frame = thumb
+                if self.is_active and getattr(self.settings.overlay, "preview_visible", True):
+                    self.signals.frame_updated.emit(thumb, self.telemetry["fps"])
+                t_vis_ms = (time.perf_counter() - t_vis_start) * 1000.0
+
                 # 3. Update Shared Telemetry
                 cur_win = self.mode_manager.get_current_window()
                 self.telemetry["raw_hand"] = hand
@@ -602,10 +797,23 @@ class PointerVApp(QObject):
                 self.telemetry["status_text"] = eval_res["status_text"]
                 self.telemetry["brush_locked"] = eval_res["brush_locked"]
                 self.telemetry["latency_ms"] = infer_ms
+                self.telemetry["is_yielding"] = is_yielding
+                self.telemetry["stage_timings"] = {
+                    "capture_ms": round(t_cap_ms, 2),
+                    "infer_ms": round(t_inf_ms, 2),
+                    "gesture_ms": round(t_gest_ms, 2),
+                    "output_ms": round(t_out_ms, 2),
+                    "vis_ms": round(t_vis_ms, 2),
+                }
                 self.telemetry["kb_zone"] = self.mode_manager.active_zone.value
                 self.telemetry["kb_row"] = self.mode_manager.row_idx
                 self.telemetry["kb_win_keys"] = [k.label for k in cur_win.keys]
                 self.telemetry["curls"] = curls_dict
+                self.telemetry["finger_curls"] = eval_res.get("finger_curls", curls_dict)
+                self.telemetry["keyboard_corner"] = getattr(self.settings.keyboard, "corner", "bottom-right")
+                self.telemetry["keyboard_monitor"] = getattr(self.settings.keyboard, "monitor_mode", "active_window")
+                self.telemetry["in_active_region"] = eval_res.get("in_active_region", True)
+                self.telemetry["cursor_status_reason"] = eval_res.get("status_text", "")
                 self.telemetry["is_active"] = self.is_active
                 self.telemetry["is_paused"] = self.mode_manager.is_paused
                 self.telemetry["camera_connected"] = self.camera.is_connected
@@ -627,76 +835,6 @@ class PointerVApp(QObject):
                 self.telemetry["key_last_action"] = self.keyboard_out.last_event_kind
                 self.telemetry["internal_errors"] = list(self.internal_errors)
 
-                # 4. Render HUD Visualization onto frame
-                vis_frame = draw_hud_landmarks(
-                    frame_bgr=frame,
-                    hand=hand,
-                    active_region=self.settings.active_region,
-                    status_text=eval_res["status_text"],
-                    dwell_progress=eval_res["dwell_progress"],
-                    brush_locked=eval_res["brush_locked"],
-                    pause_progress=eval_res.get("fist_pause_progress", 0.0),
-                    is_paused=self.mode_manager.is_paused,
-                )
-                self.latest_vis_frame = vis_frame
-
-                # 5. POINTER MODE: Dispatch Mouse Events (if active and not paused)
-                if self.is_active and self.mode_manager.mode == AppMode.POINTER and not self.mode_manager.is_paused:
-                    cx = eval_res["cursor_x"]
-                    cy = eval_res["cursor_y"]
-
-                    if eval_res["hand_visible"] and action != GestureAction.PAUSE.value:
-                        self.mouse.move_to(cx, cy)
-
-                    # Update cursor overlay via Qt signal
-                    overlay_state = "NORMAL"
-                    if not eval_res["hand_visible"]:
-                        overlay_state = "LOST"
-                    elif eval_res["brush_locked"]:
-                        overlay_state = "BRUSH_LOCKED"
-                    elif action == GestureAction.SINGLE_CLICK.value:
-                        overlay_state = "CLICK"
-                    elif action == GestureAction.DOUBLE_CLICK.value:
-                        overlay_state = "DOUBLE_CLICK"
-
-                    self.signals.cursor_updated.emit(cx, cy, overlay_state, eval_res["dwell_progress"])
-
-                    # Mouse input dispatches
-                    if action == GestureAction.SINGLE_CLICK.value:
-                        self.mouse.click(cx, cy)
-                        self.signals.click_animated.emit(False)
-                        self.sound.key_click()
-                        log_input_event("click_left", count=1)
-
-                    elif action == GestureAction.DOUBLE_CLICK.value:
-                        self.mouse.double_click(cx, cy)
-                        self.signals.click_animated.emit(True)
-                        self.sound.double_click()
-                        log_input_event("double_click", count=1)
-
-                    elif action == GestureAction.RIGHT_CLICK.value:
-                        self.mouse.right_click(cx, cy)
-                        self.sound.key_click()
-                        log_input_event("click_right", count=1)
-
-                    elif action == GestureAction.SCROLL.value:
-                        delta = eval_res.get("scroll_delta", 0)
-                        self.mouse.scroll(delta)
-
-                    elif action == GestureAction.BRUSH_LOCK_TOGGLE.value:
-                        self.mouse.left_down()
-                        self.sound.lock()
-                        log_input_event("brush_lock_down", count=1)
-
-                    elif action == GestureAction.BRUSH_UNLOCK.value:
-                        self.mouse.left_up()
-                        self.sound.unlock()
-                        log_input_event("brush_lock_up", count=1)
-
-                # Send frame to preview overlay
-                if self.is_active and self.settings.overlay.preview_visible:
-                    self.signals.frame_updated.emit(vis_frame, self.telemetry["fps"])
-
                 # Measure FPS
                 frame_count += 1
                 elapsed = time.perf_counter() - fps_start
@@ -705,9 +843,16 @@ class PointerVApp(QObject):
                     frame_count = 0
                     fps_start = time.perf_counter()
 
-                # Frame pacing
+                # Intelligent Frame Pacing: Battery Saver throttles ONLY after 5s of no hand
                 frame_time = time.perf_counter() - loop_start
-                target_fps = 15 if (self.settings.battery_saver and not self.is_active) else self.settings.target_fps
+                is_idle_5s = (time.perf_counter() - self.gesture_engine.last_hand_time) > 5.0
+                if self.settings.battery_saver and is_idle_5s:
+                    target_fps = 15
+                    self.telemetry["fps_throttle_reason"] = "Battery Saver (5s no hand)"
+                else:
+                    target_fps = self.settings.target_fps
+                    self.telemetry["fps_throttle_reason"] = "Full Speed (Active)"
+
                 target_time = 1.0 / max(15, target_fps)
                 sleep_time = target_time - frame_time
                 if sleep_time > 0.001:
@@ -721,11 +866,51 @@ class PointerVApp(QObject):
                 time.sleep(0.02)
 
     def shutdown(self):
-        """Clean resource shutdown with guaranteed release of held inputs."""
+        """Clean resource shutdown with guaranteed release of held inputs and no hanging threads."""
+        if not getattr(self, "running", True):
+            return
         self.running = False
+
+        import faulthandler
+        try:
+            faulthandler.cancel_dump_traceback_later()
+        except Exception:
+            pass
+
+        if hasattr(self, "watchdog_timer"):
+            self.watchdog_timer.stop()
+        if hasattr(self, "fg_timer"):
+            self.fg_timer.stop()
+
         self.emergency_release_all()
+
+        try:
+            import keyboard
+            keyboard.unhook_all()
+        except Exception:
+            pass
+
         self.camera.stop()
         self.tracker.close()
+
+        if hasattr(self, "tray"):
+            self.tray.hide()
+
+        if hasattr(self, "cursor_overlay"):
+            self.cursor_overlay.close()
+        if hasattr(self, "camera_overlay"):
+            self.camera_overlay.close()
+        if hasattr(self, "keyboard_overlay"):
+            self.keyboard_overlay.close()
+
+        from overlay import restore_system_cursor
+        restore_system_cursor()
+
+        # Last-resort watchdog: force terminate process if alive after 3.0s
+        watchdog = threading.Timer(3.0, lambda: os._exit(0))
+        watchdog.daemon = True
+        watchdog.start()
+
         self.app.quit()
 
 

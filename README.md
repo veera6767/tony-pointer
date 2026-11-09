@@ -54,7 +54,33 @@
 > [!NOTE]
 > **Windows Defender / SmartScreen**: Since this is a newly released independent open-source binary, Windows SmartScreen may show an informational prompt ("Windows protected your PC"). Click **More info** -> **Run anyway**. You can verify the official SHA-256 checksums in the release notes.
 
-### Option B: Portable ZIP Package
+### Option B: Recipient Standalone Setup (`share/`)
+- A single standalone setup executable is pre-packaged in `share/PointerV-Setup-2.0.0.exe` alongside `share/README_FIRST.txt` and SHA-256 checksums in `share/PointerV-Setup-2.0.0.exe.sha256`.
+- Includes VC++ 2015-2022 redistributable verification, single-instance detection, uninstaller, and desktop shortcut.
+
+---
+
+## Safety & Input Coexistence Features
+
+1. **Touchpad & Mouse Arbitration ("Yielding")**:
+   - Detects if a physical mouse or laptop touchpad moves the cursor by $> 6$ px.
+   - Pointer V automatically yields for 1.5 s, releases held buttons, and displays `"YIELDING to touchpad"` in the title bar badge.
+2. **Click Loop Circuit Breaker**:
+   - Trips if $> 4$ clicks happen in 2.0 s, or $> 2$ right clicks occur within 5.0 s at the same position.
+   - Automatically pauses tracking and displays a tray alert.
+3. **One-Shot Right Click with Cooldown**:
+   - Requires an actual pose transition into index+middle extended held stationary for 0.45 s.
+   - Displays a cyan countdown arc on the cursor overlay.
+   - Fires exactly once, followed by an enforced 1.5 s cooldown.
+4. **Dwell Brush Lock Safety**:
+   - Works only in `PAINT` mode. In `POINTER` mode, stationary fingers will never press mouse buttons.
+   - Includes a 30-second maximum hold safety release.
+5. **Clean Process Termination**:
+   - Window close button (✕) quits all worker threads, releases webcam capture, unhooks keyboard listeners, and terminates cleanly with a 3.0 s watchdog fallback.
+
+---
+
+### Option C: Portable ZIP Package
 1. Download `PointerV-Portable-2.0.0.zip`.
 2. Extract the folder anywhere on your PC.
 3. Run `PointerV.exe`. No installation, Python setup, or administrator privileges required.

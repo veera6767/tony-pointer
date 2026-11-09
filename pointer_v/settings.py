@@ -70,6 +70,12 @@ class GestureSettings:
     dominant_hand: str = "auto"           # "auto", "right", "left"
     fist_pause_hold_s: float = 1.50       # Closed fist held 1.5s in POINTER mode to pause
     auto_pause_timeout_s: float = 10.0    # Auto pause if no hand is seen for N seconds
+    pointing_sensitivity: float = 1.0     # Tolerance for relaxed pointing pose (0.5-2.0)
+    click_mode: str = "left_only"         # "off", "left_only", "all"
+    yield_duration_s: float = 1.5         # Pause cursor movement when physical mouse/touchpad moves
+    yield_distance_px: int = 6            # Pixels difference from last set position to detect physical move
+    max_brush_lock_s: float = 30.0        # Max duration in seconds to hold button locked
+    circuit_breaker_enabled: bool = True  # Auto-pause on rapid click burst
     game_mode_enabled: bool = False       # Auto pause output when fullscreen game is focused
     game_mode_exclusions: List[str] = field(
         default_factory=lambda: ["steam.exe", "epicgames.exe"]
@@ -78,15 +84,20 @@ class GestureSettings:
 
 @dataclass
 class OverlaySettings:
-    cursor_color: str = "#22D3EE"        # Cyan reticle
+    cursor_shape: str = "gaming"         # "gaming" neon blue arrowhead pointer
+    cursor_color: str = "Blue"           # "Blue", "Cyan", "Violet", "Red"
+    cursor_size: float = 1.0             # Scale 0.75x to 2.0x
+    cursor_trail: bool = True            # 8-point fading comet trail
+    cursor_glow: bool = True             # Soft ambient blue glow
+    hide_system_cursor: bool = False     # Hide standard Windows arrow while active
     brush_lock_color: str = "#F0506E"    # Red brush locked
-    cursor_size: int = 32
     preview_width: int = 320
     preview_height: int = 240
-    preview_opacity: float = 0.95
+    preview_opacity: float = 0.90        # 90% opacity (not too transparent)
     preview_visible: bool = True
-    preview_pos_x: int = 40
-    preview_pos_y: int = 40
+    preview_border: bool = True
+    preview_pos_x: int = -1              # -1 defaults to top-right safe position
+    preview_pos_y: int = -1
 
 
 @dataclass
@@ -95,6 +106,14 @@ class KeyboardSettings:
     symbols_panel_enabled: bool = True
     dim_inactive_panel: bool = True
     opacity: float = 0.94
+    corner: str = "bottom-right"         # "top-left", "top-right", "bottom-left", "bottom-right", "bottom-center"
+    monitor_mode: str = "active_window"  # "active_window", "primary", "specific"
+    chosen_monitor: int = -1             # Specific monitor index if monitor_mode is "specific"
+    margin: int = 16                     # Padding from monitor work area edges in px
+    width_percent: float = 0.40          # 0.25 to 0.60 of screen work width
+    snap_to_corner: bool = True          # Snap to nearest corner when released after drag
+    avoid_active_window: bool = True     # Best-effort dodge if foreground window overlaps
+    keep_visible_dimmed: bool = False    # Dim instead of hiding when closing keyboard
     open_palm_hold_s: float = 0.50       # Hold open palm for ~0.5s to open keyboard
     fist_close_hold_s: float = 0.50      # Hold fist for ~0.5s to close keyboard
     swipe_threshold: float = 0.32        # Normalized by hand size
@@ -146,7 +165,7 @@ class AppConfig:
     camera_width: int = 1280
     camera_height: int = 720
     target_fps: int = 60                 # 15, 30, 60
-    battery_saver: bool = True           # Throttles FPS to 15 when idle or on battery
+    battery_saver: bool = False          # Default OFF (throttles to 15 FPS only after 5s no hand)
     sensitivity: float = 1.0
     acceleration: float = 1.15
     active_region: ActiveRegion = field(default_factory=ActiveRegion)
@@ -162,6 +181,7 @@ class AppConfig:
     hotkey_paint: str = "ctrl+alt+p"
     hotkey_pause: str = "ctrl+alt+space"
     start_minimized: bool = False
+    close_to_tray: bool = False          # False = X button quits app; True = minimizes to tray
     tutorial_completed: bool = False
     show_tutorial_on_startup: bool = True
     developer_mode_enabled: bool = False
@@ -272,7 +292,7 @@ class SettingsManager:
                 camera_width=merged_dict.get("camera_width", 1280),
                 camera_height=merged_dict.get("camera_height", 720),
                 target_fps=merged_dict.get("target_fps", 60),
-                battery_saver=merged_dict.get("battery_saver", True),
+                battery_saver=merged_dict.get("battery_saver", False),
                 sensitivity=merged_dict.get("sensitivity", 1.0),
                 acceleration=merged_dict.get("acceleration", 1.15),
                 active_region=active_region,
@@ -288,6 +308,7 @@ class SettingsManager:
                 hotkey_paint=merged_dict.get("hotkey_paint", "ctrl+alt+p"),
                 hotkey_pause=merged_dict.get("hotkey_pause", "ctrl+alt+space"),
                 start_minimized=merged_dict.get("start_minimized", False),
+                close_to_tray=merged_dict.get("close_to_tray", False),
                 tutorial_completed=merged_dict.get("tutorial_completed", False),
                 show_tutorial_on_startup=merged_dict.get("show_tutorial_on_startup", True),
                 developer_mode_enabled=merged_dict.get("developer_mode_enabled", False),

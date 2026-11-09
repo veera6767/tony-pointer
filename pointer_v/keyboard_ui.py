@@ -43,7 +43,7 @@ def apply_noactivate_style(hwnd: int):
 class FloatingAirKeyboardWidget(QWidget):
     """
     Transparent, non-activating floating HUD window displaying the
-    Air Keyboard and Symbols Panel.
+    Air Keyboard and Symbols Panel docked in a screen corner.
     """
 
     def __init__(self, settings, layout_manager: KeyboardLayoutManager):
@@ -59,13 +59,6 @@ class FloatingAirKeyboardWidget(QWidget):
         )
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
-
-        # Keyboard Dimensions
-        self.key_size = 44
-        self.key_gap = 5
-        self.margin_x = 20
-        self.margin_y = 44
-        self.divider_width = 28
 
         # Dynamic state
         self.active_zone = Zone.MAIN
@@ -87,14 +80,120 @@ class FloatingAirKeyboardWidget(QWidget):
         self.last_typed_history: List[str] = []
         self.glow_phase: float = 0.0
 
+        # Animation state for slide-and-fade
+        self.is_animating: bool = False
+        self.anim_progress: float = 1.0
+        self.anim_start_pos = QPoint()
+        self.anim_target_pos = QPoint()
+        self.anim_start_opacity: float = 0.0
+        self.anim_target_opacity: float = 0.94
+        self.is_opening: bool = False
+
         # Drag tracking
+        self.is_dragging: bool = False
         self.drag_position = QPoint()
+
+        # Keyboard Dimensions & Layout scaling
+        self.key_size = 40
+        self.key_gap = 4
+        self.margin_x = 16
+        self.margin_y = 38
+        self.divider_width = 24
 
         self.anim_timer = QTimer(self)
         self.anim_timer.timeout.connect(self._on_animate)
         self.anim_timer.start(16)
 
         self._recalculate_window_size()
+
+        # Listen to screen topology updates
+        from PySide6.QtGui import QGuiApplication
+        app = QGuiApplication.instance()
+        if app:
+            app.screenAdded.connect(lambda _: self._reposition_to_corner())
+            app.screenRemoved.connect(lambda _: self._reposition_to_corner())
+            app.primaryScreenChanged.connect(lambda _: self._reposition_to_corner())
+
+    def _get_target_screen(self):
+        """Resolves target screen according to monitor_mode setting."""
+        from PySide6.QtGui import QGuiApplication
+        screens = QGuiApplication.screens()
+        if not screens:
+            return None
+
+        mode = getattr(self.settings.keyboard, "monitor_mode", "active_window")
+        if mode == "specific":
+            idx = getattr(self.settings.keyboard, "chosen_monitor", 0)
+            if 0 <= idx < len(screens):
+                return screens[idx]
+
+        if mode == "active_window" and sys.platform.startswith("win"):
+            try:
+                user32 = ctypes.windll.user32
+                hwnd = user32.GetForegroundWindow()
+                if hwnd and hwnd != int(self.winId()):
+                    class RECT(ctypes.Structure):
+                        _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long), ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+                    rc = RECT()
+                    if user32.GetWindowRect(hwnd, ctypes.byref(rc)):
+                        from PySide6.QtCore import QPoint
+                        center = QPoint((rc.left + rc.right) // 2, (rc.top + rc.bottom) // 2)
+                        for s in screens:
+                            if s.geometry().contains(center):
+                                return s
+            except Exception:
+                pass
+
+        # Fallback to primary screen
+        return QGuiApplication.primaryScreen() or screens[0]
+
+    def calculate_corner_position(self, corner_name: Optional[str] = None, screen=None) -> QPoint:
+        """Computes docked QPoint in monitor work area for the given corner."""
+        if screen is None:
+            screen = self._get_target_screen()
+        if screen is None:
+            return QPoint(100, 100)
+
+        work = screen.availableGeometry()
+        margin = getattr(self.settings.keyboard, "margin", 16)
+        w = self.width()
+        h = self.height()
+
+        if corner_name is None:
+            corner_name = getattr(self.settings.keyboard, "corner", "bottom-right")
+        corner_name = corner_name.lower()
+
+        # Dodge active window if setting enabled
+        if getattr(self.settings.keyboard, "avoid_active_window", True) and sys.platform.startswith("win"):
+            try:
+                user32 = ctypes.windll.user32
+                hwnd = user32.GetForegroundWindow()
+                if hwnd and hwnd != int(self.winId()):
+                    class RECT(ctypes.Structure):
+                        _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long), ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+                    rc = RECT()
+                    if user32.GetWindowRect(hwnd, ctypes.byref(rc)):
+                        # If active window is in bottom-right quadrant, flip to bottom-left
+                        if "right" in corner_name and (rc.right > work.center().x() and rc.bottom > work.center().y()):
+                            corner_name = corner_name.replace("right", "left")
+            except Exception:
+                pass
+
+        if corner_name == "top-left":
+            return QPoint(work.left() + margin, work.top() + margin)
+        elif corner_name == "top-right":
+            return QPoint(work.right() - w - margin, work.top() + margin)
+        elif corner_name == "bottom-left":
+            return QPoint(work.left() + margin, work.bottom() - h - margin)
+        elif corner_name == "bottom-center":
+            return QPoint(work.left() + (work.width() - w) // 2, work.bottom() - h - margin)
+        else: # "bottom-right" (default)
+            return QPoint(work.right() - w - margin, work.bottom() - h - margin)
+
+    def _reposition_to_corner(self):
+        self._recalculate_window_size()
+        pos = self.calculate_corner_position()
+        self.move(pos)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -108,29 +207,116 @@ class FloatingAirKeyboardWidget(QWidget):
         target_rect = QRect(self.pos(), self.size())
         is_visible = any(s.geometry().intersects(target_rect) for s in QGuiApplication.screens())
         if not is_visible:
-            primary = QGuiApplication.primaryScreen()
-            if primary:
-                geo = primary.availableGeometry()
-                cx = geo.x() + max(0, (geo.width() - self.width()) // 2)
-                cy = geo.y() + geo.height() - self.height() - 40
-                self.move(cx, cy)
+            self._reposition_to_corner()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
+            # Check if clicked in header strip drag area (top 34 px)
+            if event.position().y() <= 34:
+                self.is_dragging = True
+                self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+                event.accept()
 
     def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.LeftButton:
+        if self.is_dragging and event.buttons() == Qt.LeftButton:
             new_pos = event.globalPosition().toPoint() - self.drag_position
             self.move(new_pos)
             event.accept()
 
+    def mouseReleaseEvent(self, event):
+        if self.is_dragging:
+            self.is_dragging = False
+            if getattr(self.settings.keyboard, "snap_to_corner", True):
+                self._snap_to_nearest_corner()
+            event.accept()
+
+    def _snap_to_nearest_corner(self):
+        """Finds closest corner among the 5 docks and smoothly snaps there."""
+        screen = self._get_target_screen()
+        if not screen:
+            return
+
+        corners = ["bottom-right", "bottom-left", "bottom-center", "top-right", "top-left"]
+        best_corner = "bottom-right"
+        min_dist = float("inf")
+        cur_pos = self.pos()
+
+        for c in corners:
+            pt = self.calculate_corner_position(c, screen=screen)
+            dist = math.hypot(cur_pos.x() - pt.x(), cur_pos.y() - pt.y())
+            if dist < min_dist:
+                min_dist = dist
+                best_corner = c
+
+        self.settings.keyboard.corner = best_corner
+        target_pos = self.calculate_corner_position(best_corner, screen=screen)
+        self.move(target_pos)
+        return best_corner
+
+    def animate_show(self):
+        """Slides and fades keyboard in from corner edge over ~150 ms."""
+        self._recalculate_window_size()
+        screen = self._get_target_screen()
+        self.anim_target_pos = self.calculate_corner_position(screen=screen)
+        corner = getattr(self.settings.keyboard, "corner", "bottom-right")
+
+        # Start offset slightly shifted towards the corner boundary
+        offset_x = 40 if "right" in corner else (-40 if "left" in corner else 0)
+        offset_y = 40 if "bottom" in corner else -40
+        self.anim_start_pos = QPoint(self.anim_target_pos.x() + offset_x, self.anim_target_pos.y() + offset_y)
+
+        self.move(self.anim_start_pos)
+        self.anim_start_opacity = 0.0
+        self.anim_target_opacity = getattr(self.settings.keyboard, "opacity", 0.94)
+        self.setWindowOpacity(0.0)
+
+        self.is_opening = True
+        self.is_animating = True
+        self.anim_progress = 0.0
+        self.show()
+        apply_noactivate_style(int(self.winId()))
+
+    def animate_hide(self):
+        """Slides and fades out over ~150 ms."""
+        if getattr(self.settings.keyboard, "keep_visible_dimmed", False):
+            # Dim instead of hiding
+            self.setWindowOpacity(0.18)
+            return
+
+        corner = getattr(self.settings.keyboard, "corner", "bottom-right")
+        offset_x = 40 if "right" in corner else (-40 if "left" in corner else 0)
+        offset_y = 40 if "bottom" in corner else -40
+
+        self.anim_start_pos = self.pos()
+        self.anim_target_pos = QPoint(self.anim_start_pos.x() + offset_x, self.anim_start_pos.y() + offset_y)
+        self.anim_start_opacity = self.windowOpacity()
+        self.anim_target_opacity = 0.0
+
+        self.is_opening = False
+        self.is_animating = True
+        self.anim_progress = 0.0
+
     def _recalculate_window_size(self):
-        main_w = 14 * (self.key_size + self.key_gap) + 60
-        symbols_w = 8 * (self.key_size + self.key_gap) + 30 if self.settings.keyboard.symbols_panel_enabled else 0
+        """Scales keyboard between 720 and 1100 px (about 40% of screen width)."""
+        screen = self._get_target_screen()
+        work_w = screen.availableGeometry().width() if screen else 1920
+        target_pct = getattr(self.settings.keyboard, "width_percent", 0.40)
+        desired_w = int(work_w * target_pct)
+        clamped_w = max(720, min(1100, desired_w))
+
+        # Dynamically scale key size to fit clamped width perfectly
+        # 14 keys main + divider + 8 keys symbols = ~23 key units
+        symbols_enabled = getattr(self.settings.keyboard, "symbols_panel_enabled", True)
+        total_units = 14.5 + (9.0 if symbols_enabled else 0.0)
+        avail_for_keys = clamped_w - (self.margin_x * 2) - (self.divider_width if symbols_enabled else 0)
+        calc_key_size = int(avail_for_keys / total_units)
+        self.key_size = max(34, min(48, calc_key_size))
+        self.key_gap = max(3, int(self.key_size * 0.11))
+
+        main_w = int(14.5 * (self.key_size + self.key_gap))
+        symbols_w = int(8.5 * (self.key_size + self.key_gap)) if symbols_enabled else 0
         total_w = self.margin_x * 2 + main_w + (self.divider_width + symbols_w if symbols_w > 0 else 0)
-        total_h = self.margin_y + 6 * (self.key_size + self.key_gap) + 24
+        total_h = self.margin_y + 6 * (self.key_size + self.key_gap) + 16
         self.resize(int(total_w), int(total_h))
 
     def update_state(
@@ -170,6 +356,27 @@ class FloatingAirKeyboardWidget(QWidget):
         self.glow_phase = (self.glow_phase + 0.06) % (2 * math.pi)
         if self.flash_opacity > 0.0:
             self.flash_opacity = max(0.0, self.flash_opacity - 0.10)
+
+        # Slide-and-fade animation step (~150 ms at 60 FPS is ~9-10 steps)
+        if self.is_animating:
+            self.anim_progress += 0.11
+            if self.anim_progress >= 1.0:
+                self.anim_progress = 1.0
+                self.is_animating = False
+                self.move(self.anim_target_pos)
+                self.setWindowOpacity(self.anim_target_opacity)
+                if not self.is_opening:
+                    self.hide()
+            else:
+                # OutCubic easing
+                t = self.anim_progress - 1.0
+                ease = t * t * t + 1.0
+                cur_x = int(self.anim_start_pos.x() + (self.anim_target_pos.x() - self.anim_start_pos.x()) * ease)
+                cur_y = int(self.anim_start_pos.y() + (self.anim_target_pos.y() - self.anim_start_pos.y()) * ease)
+                cur_op = self.anim_start_opacity + (self.anim_target_opacity - self.anim_start_opacity) * ease
+                self.move(cur_x, cur_y)
+                self.setWindowOpacity(cur_op)
+
         self.update()
 
     def paintEvent(self, event):
@@ -224,11 +431,17 @@ class FloatingAirKeyboardWidget(QWidget):
             )
 
     def _paint_header(self, painter: QPainter):
+        # Center Drag Handle & Title
+        painter.setFont(get_ui_font(9, bold=True))
+        painter.setPen(QColor(TEXT_DISABLED))
+        handle_rect = QRectF(0, 4, self.width(), 16)
+        painter.drawText(handle_rect, Qt.AlignCenter, "⋮⋮ Pointer V Air Keyboard")
+
         # Header Info Chip: Zone and Row
         painter.setFont(get_ui_font(10, bold=True))
         zone_color = QColor(BLUE if self.active_zone == Zone.MAIN else VIOLET)
         painter.setPen(zone_color)
-        painter.drawText(20, 26, f"{self.active_zone.value} · ROW {self.current_row + 1}")
+        painter.drawText(20, 24, f"{self.active_zone.value} · ROW {self.current_row + 1}")
 
         # Last Typed Strip (respecting privacy)
         if not getattr(self.settings.privacy, "hide_last_typed", False):

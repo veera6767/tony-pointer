@@ -48,20 +48,24 @@ class CameraPreviewOverlay(QWidget):
     def _restore_position(self, w: int, h: int):
         from PySide6.QtCore import QRect
         from PySide6.QtGui import QGuiApplication
-        px = self.settings.overlay.preview_pos_x
-        py = self.settings.overlay.preview_pos_y
+        px = getattr(self.settings.overlay, "preview_pos_x", -1)
+        py = getattr(self.settings.overlay, "preview_pos_y", -1)
 
-        target_rect = QRect(px, py, w, h)
-        is_visible = any(s.geometry().intersects(target_rect) for s in QGuiApplication.screens())
-        if is_visible and px >= -500 and py >= -500:
-            self.move(px, py)
-        else:
-            primary = QGuiApplication.primaryScreen()
-            if primary:
-                geo = primary.availableGeometry()
-                self.move(geo.x() + geo.width() - w - 24, geo.y() + 24)
-            else:
-                self.move(100, 100)
+        primary = QGuiApplication.primaryScreen()
+        geo = primary.availableGeometry() if primary else QRect(0, 0, 1920, 1080)
+
+        # Default safe location: Top-Right of work area, never covering main window heading
+        default_x = geo.right() - w - 24
+        default_y = geo.top() + 24
+
+        if px > 0 and py > 0:
+            target_rect = QRect(px, py, w, h)
+            is_visible = any(s.geometry().intersects(target_rect) for s in QGuiApplication.screens())
+            if is_visible:
+                self.move(px, py)
+                return
+
+        self.move(default_x, default_y)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -141,6 +145,39 @@ class CameraPreviewOverlay(QWidget):
         painter.drawLine(target_w - 3, target_h - 3, target_w - 3 - c_len, target_h - 3)
         painter.drawLine(target_w - 3, target_h - 3, target_w - 3, target_h - 3 - c_len)
 
+        # Draw Active Region Box inside camera preview
+        ar = getattr(self.settings, "active_region", None)
+        if ar:
+            rx = int(ar.x_min * target_w)
+            ry = int(ar.y_min * target_h)
+            rw = int((ar.x_max - ar.x_min) * target_w)
+            rh = int((ar.y_max - ar.y_min) * target_h)
+            ar_pen = QPen(QColor(34, 211, 238, 90), 1.0, Qt.DashLine)
+            painter.setPen(ar_pen)
+            painter.drawRect(rx, ry, rw, rh)
+
+        # Status text chip at top left
+        status_text = getattr(self, "status_text", "")
+        if status_text:
+            painter.setFont(get_mono_font(8, bold=True))
+            # Choose color based on state
+            if "Moving" in status_text or "ENGAGED" in status_text:
+                bg_col = QColor(16, 185, 129, 200) # Green
+            elif "outside" in status_text or "PAUSE" in status_text or "HOLD" in status_text:
+                bg_col = QColor(245, 165, 36, 210) # Amber
+            elif "OFF" in status_text or "LOST" in status_text or "Offline" in status_text:
+                bg_col = QColor(240, 80, 110, 210) # Red
+            else:
+                bg_col = QColor(35, 42, 54, 210)   # Neutral dark
+
+            sw = max(70, len(status_text) * 6 + 12)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(bg_col)
+            painter.drawRoundedRect(6, 6, sw, 16, 3, 3)
+
+            painter.setPen(QColor("#FFFFFF"))
+            painter.drawText(6, 6, sw, 16, Qt.AlignCenter, status_text[:28])
+
         # Small FPS chip at bottom right
         if self.fps_display > 0:
             painter.setFont(get_mono_font(9, bold=True))
@@ -150,4 +187,23 @@ class CameraPreviewOverlay(QWidget):
 
         painter.end()
         self.display_label.setPixmap(final_pix)
+
+    def set_status_text(self, text: str):
+        self.status_text = text
+
+    def dodge_rect(self, other_rect):
+        """Moves preview overlay aside if it overlaps other_rect (e.g. corner keyboard)."""
+        from PySide6.QtCore import QRect
+        from PySide6.QtGui import QGuiApplication
+        my_rect = QRect(self.pos(), self.size())
+        if my_rect.intersects(other_rect):
+            primary = QGuiApplication.primaryScreen()
+            if primary:
+                geo = primary.availableGeometry()
+                # Move to opposite vertical or horizontal corner
+                if my_rect.bottom() > geo.center().y():
+                    new_y = geo.top() + 24
+                else:
+                    new_y = geo.bottom() - self.height() - 24
+                self.move(self.x(), new_y)
 

@@ -25,6 +25,7 @@ class SettingsPage(QWidget):
     """Full settings inspector and configuration coordinator."""
 
     settings_changed = Signal()
+    restart_admin_requested = Signal()
 
     def __init__(self, settings_manager, parent=None):
         super().__init__(parent)
@@ -130,13 +131,74 @@ class SettingsPage(QWidget):
         self.spin_beta.valueChanged.connect(self._save)
         form.addRow("One Euro Beta (High-Speed Lag Adaptation):", self.spin_beta)
 
+        # Cursor Reticle & Gaming Pointer Customization
+        self.spin_cursor_size = QDoubleSpinBox()
+        self.spin_cursor_size.setRange(0.75, 2.0)
+        self.spin_cursor_size.setSingleStep(0.1)
+        self.spin_cursor_size.setValue(getattr(self.settings.overlay, "cursor_size", 1.0))
+        self.spin_cursor_size.valueChanged.connect(self._save)
+        form.addRow("Cursor Reticle Size:", self.spin_cursor_size)
+
+        self.combo_cursor_color = QComboBox()
+        self.combo_cursor_color.addItems(["Blue (Default)", "Cyan", "Violet", "Red"])
+        cur_col = getattr(self.settings.overlay, "cursor_color", "Blue")
+        col_map = {"Blue": 0, "Cyan": 1, "Violet": 2, "Red": 3}
+        self.combo_cursor_color.setCurrentIndex(col_map.get(cur_col, 0))
+        self.combo_cursor_color.currentIndexChanged.connect(self._save)
+        form.addRow("Cursor Color Theme:", self.combo_cursor_color)
+
+        self.chk_cursor_trail = QCheckBox("Enable Fading 8-Point Motion Comet Trail")
+        self.chk_cursor_trail.setChecked(getattr(self.settings.overlay, "cursor_trail", True))
+        self.chk_cursor_trail.toggled.connect(self._save)
+        form.addRow("Motion Trail:", self.chk_cursor_trail)
+
+        self.chk_cursor_glow = QCheckBox("Enable Soft Ambient Radial Glow")
+        self.chk_cursor_glow.setChecked(getattr(self.settings.overlay, "cursor_glow", True))
+        self.chk_cursor_glow.toggled.connect(self._save)
+        form.addRow("Ambient Glow:", self.chk_cursor_glow)
+
+        self.chk_hide_sys_cursor = QCheckBox("Hide Standard Windows Arrow While Pointer V Active")
+        self.chk_hide_sys_cursor.setChecked(getattr(self.settings.overlay, "hide_system_cursor", False))
+        self.chk_hide_sys_cursor.toggled.connect(self._save)
+        form.addRow("System Cursor:", self.chk_hide_sys_cursor)
+
+        btn_restore_cur = QPushButton("Restore System Cursor")
+        from overlay import restore_system_cursor
+        btn_restore_cur.clicked.connect(lambda: restore_system_cursor())
+        form.addRow("Cursor Recovery:", btn_restore_cur)
+
         box.addLayout(form)
         return card
 
     def _build_clicks_section(self) -> QWidget:
-        card, box = self._create_section_card("2. Click Gestures & Dwell Parameters")
+        card, box = self._create_section_card("2. Click Gestures & Input Arbitration")
         form = QFormLayout()
         form.setSpacing(10)
+
+        self.combo_click_mode = QComboBox()
+        self.combo_click_mode.addItems([
+            "Left clicks only (Default - Safe)",
+            "All (Left clicks + Two-Finger Right Click)",
+            "Off (Disable all injected clicks)",
+        ])
+        cur_cm = getattr(self.settings.gestures, "click_mode", "left_only")
+        cm_map = {"left_only": 0, "all": 1, "off": 2}
+        self.combo_click_mode.setCurrentIndex(cm_map.get(cur_cm, 0))
+        self.combo_click_mode.currentIndexChanged.connect(self._save)
+        form.addRow("Click Gestures Allowed:", self.combo_click_mode)
+
+        self.spin_yield_duration = QDoubleSpinBox()
+        self.spin_yield_duration.setRange(0.5, 5.0)
+        self.spin_yield_duration.setSingleStep(0.25)
+        self.spin_yield_duration.setValue(getattr(self.settings.gestures, "yield_duration_s", 1.5))
+        self.spin_yield_duration.valueChanged.connect(self._save)
+        form.addRow("Touchpad Yield Pause Duration (s):", self.spin_yield_duration)
+
+        self.spin_yield_dist = QSpinBox()
+        self.spin_yield_dist.setRange(2, 25)
+        self.spin_yield_dist.setValue(getattr(self.settings.gestures, "yield_distance_px", 6))
+        self.spin_yield_dist.valueChanged.connect(self._save)
+        form.addRow("Touchpad Movement Detection Threshold (px):", self.spin_yield_dist)
 
         self.spin_double_tap = QSpinBox()
         self.spin_double_tap.setRange(200, 800)
@@ -155,7 +217,7 @@ class SettingsPage(QWidget):
         self.spin_dwell.setSingleStep(0.05)
         self.spin_dwell.setValue(self.settings.gestures.dwell_lock_time_s)
         self.spin_dwell.valueChanged.connect(self._save)
-        form.addRow("Dwell Brush Lock Hold Duration (seconds):", self.spin_dwell)
+        form.addRow("Dwell Brush Lock Hold Duration (seconds, Paint Mode only):", self.spin_dwell)
 
         self.spin_right = QDoubleSpinBox()
         self.spin_right.setRange(0.2, 1.2)
@@ -185,9 +247,41 @@ class SettingsPage(QWidget):
         return card
 
     def _build_keyboard_section(self) -> QWidget:
-        card, box = self._create_section_card("4. Air Keyboard HUD & Key Repeat")
+        card, box = self._create_section_card("4. Air Keyboard HUD & Corner Docking")
         form = QFormLayout()
         form.setSpacing(10)
+
+        self.combo_corner = QComboBox()
+        self.combo_corner.addItems([
+            "Bottom-Right (Default)",
+            "Bottom-Left",
+            "Bottom-Center",
+            "Top-Right",
+            "Top-Left"
+        ])
+        corner_val = getattr(self.settings.keyboard, "corner", "bottom-right")
+        corner_map = {
+            "bottom-right": 0, "bottom-left": 1, "bottom-center": 2,
+            "top-right": 3, "top-left": 4
+        }
+        self.combo_corner.setCurrentIndex(corner_map.get(corner_val, 0))
+        self.combo_corner.currentIndexChanged.connect(self._save)
+        form.addRow("Default Dock Corner:", self.combo_corner)
+
+        self.chk_avoid_window = QCheckBox("Avoid Active Window (Auto-dodge if app overlaps dock corner)")
+        self.chk_avoid_window.setChecked(getattr(self.settings.keyboard, "avoid_active_window", True))
+        self.chk_avoid_window.toggled.connect(self._save)
+        form.addRow("Window Avoidance:", self.chk_avoid_window)
+
+        self.chk_snap_corner = QCheckBox("Snap Floating Keyboard to Nearest Corner on Drag Release")
+        self.chk_snap_corner.setChecked(getattr(self.settings.keyboard, "snap_to_corner", True))
+        self.chk_snap_corner.toggled.connect(self._save)
+        form.addRow("Corner Snapping:", self.chk_snap_corner)
+
+        self.chk_keep_dimmed = QCheckBox("Keep Visible, Dimmed (30% opacity when in pointer mode)")
+        self.chk_keep_dimmed.setChecked(getattr(self.settings.keyboard, "keep_visible_dimmed", False))
+        self.chk_keep_dimmed.toggled.connect(self._save)
+        form.addRow("Persistence:", self.chk_keep_dimmed)
 
         self.chk_symbols_enabled = QCheckBox("Enable Separate Symbols Panel on Right")
         self.chk_symbols_enabled.setChecked(self.settings.keyboard.symbols_panel_enabled)
@@ -300,10 +394,31 @@ class SettingsPage(QWidget):
         self.chk_startup_min.toggled.connect(self._save)
         form.addRow("System Startup:", self.chk_startup_min)
 
+        self.chk_close_to_tray = QCheckBox("Close Button (✕) Minimizes to Tray (Unchecked = Quits App)")
+        self.chk_close_to_tray.setChecked(getattr(self.settings, "close_to_tray", False))
+        self.chk_close_to_tray.toggled.connect(self._save)
+        form.addRow("Window Close:", self.chk_close_to_tray)
+
         self.chk_dev_mode = QCheckBox("Enable Hidden Developer Tools Page")
         self.chk_dev_mode.setChecked(self.settings.developer_mode_enabled)
         self.chk_dev_mode.toggled.connect(self._save)
         form.addRow("Developer Mode:", self.chk_dev_mode)
+
+        import ctypes
+        is_admin = False
+        try:
+            is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+        except Exception:
+            pass
+
+        btn_admin = QPushButton("Restart Pointer V as Administrator" if not is_admin else "Running with Administrator Privileges")
+        btn_admin.setEnabled(not is_admin)
+        if not is_admin:
+            btn_admin.setStyleSheet("QPushButton { background-color: #2e1065; color: #c084fc; border: 1px solid #7c3aed; padding: 6px 12px; border-radius: 6px; } QPushButton:hover { background-color: #3b0764; }")
+            btn_admin.clicked.connect(self.restart_admin_requested.emit)
+        else:
+            btn_admin.setStyleSheet("QPushButton { background-color: #14532d; color: #4ade80; border: 1px solid #16a34a; padding: 6px 12px; border-radius: 6px; }")
+        form.addRow("Elevated Privileges:", btn_admin)
 
         hotkey_desc = QLabel(
             "Active Hotkeys:\n"
@@ -326,6 +441,19 @@ class SettingsPage(QWidget):
         self.settings.one_euro.min_cutoff = self.spin_min_cutoff.value()
         self.settings.one_euro.beta = self.spin_beta.value()
 
+        color_choices = ["Blue", "Cyan", "Violet", "Red"]
+        self.settings.overlay.cursor_size = self.spin_cursor_size.value()
+        self.settings.overlay.cursor_color = color_choices[self.combo_cursor_color.currentIndex()]
+        self.settings.overlay.cursor_trail = self.chk_cursor_trail.isChecked()
+        self.settings.overlay.cursor_glow = self.chk_cursor_glow.isChecked()
+        self.settings.overlay.hide_system_cursor = self.chk_hide_sys_cursor.isChecked()
+        self.settings.close_to_tray = self.chk_close_to_tray.isChecked()
+
+        click_modes = ["left_only", "all", "off"]
+        self.settings.gestures.click_mode = click_modes[self.combo_click_mode.currentIndex()]
+        self.settings.gestures.yield_duration_s = self.spin_yield_duration.value()
+        self.settings.gestures.yield_distance_px = self.spin_yield_dist.value()
+
         self.settings.gestures.double_tap_window_ms = float(self.spin_double_tap.value())
         self.settings.gestures.single_click_enabled = self.chk_single_click.isChecked()
         self.settings.gestures.dwell_lock_time_s = self.spin_dwell.value()
@@ -338,6 +466,12 @@ class SettingsPage(QWidget):
         self.settings.paint.auto_detect = self.chk_auto_paint.isChecked()
         apps = [x.strip().lower() for x in self.txt_paint_apps.text().split(",") if x.strip()]
         self.settings.paint.active_apps = apps
+
+        corner_keys = ["bottom-right", "bottom-left", "bottom-center", "top-right", "top-left"]
+        self.settings.keyboard.corner = corner_keys[self.combo_corner.currentIndex()]
+        self.settings.keyboard.avoid_active_window = self.chk_avoid_window.isChecked()
+        self.settings.keyboard.snap_to_corner = self.chk_snap_corner.isChecked()
+        self.settings.keyboard.keep_visible_dimmed = self.chk_keep_dimmed.isChecked()
 
         self.settings.keyboard.symbols_panel_enabled = self.chk_symbols_enabled.isChecked()
         self.settings.keyboard.dim_inactive_panel = self.chk_dim_inactive.isChecked()

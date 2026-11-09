@@ -249,7 +249,7 @@ def draw_hud_landmarks(
     cv2.line(vis, (ax2, ay2), (ax2 - c_len, ay2), accent_bgr, 1)
     cv2.line(vis, (ax2, ay2), (ax2, ay2 - c_len), accent_bgr, 1)
 
-    # 2. Hand Landmarks
+    # 2. Hand Landmarks Skeleton
     if hand is not None:
         coords = []
         for lm in hand.landmarks:
@@ -257,51 +257,60 @@ def draw_hud_landmarks(
             py = int(lm.y * h)
             coords.append((px, py))
 
-        bone_color = (110, 80, 240) if brush_locked else (238, 211, 34) # BGR
+        # Vibrant skeleton colors (Cyan / Blue neon for tracking)
+        bone_color = (110, 80, 240) if brush_locked else (238, 211, 34)  # Cyan #22D3EE in BGR
+        joint_color = (255, 123, 47) if not brush_locked else (80, 50, 240) # Blue #2F7BFF in BGR
         if is_paused:
             bone_color = (117, 101, 91)
+            joint_color = (117, 101, 91)
 
+        # Draw bones
         for p1_idx, p2_idx in HAND_CONNECTIONS:
-            cv2.line(vis, coords[p1_idx], coords[p2_idx], bone_color, 1)
+            cv2.line(vis, coords[p1_idx], coords[p2_idx], bone_color, 2)
 
+        # Draw joints
         for i, (px, py) in enumerate(coords):
-            if i == 8:
-                reticle_color = (110, 80, 240) if brush_locked else (238, 211, 34)
+            if i == 8:  # Index fingertip hotspot
+                reticle_color = (110, 80, 240) if brush_locked else (255, 123, 47)
                 if is_paused:
                     reticle_color = (117, 101, 91)
-                cv2.circle(vis, (px, py), 4, reticle_color, -1)
-                cv2.circle(vis, (px, py), 12, reticle_color, 1)
+                # Outer target rings
+                cv2.circle(vis, (px, py), 14, reticle_color, 2)
+                cv2.circle(vis, (px, py), 5, (255, 255, 255), -1)
 
                 # Dwell progress arc
                 if dwell_progress > 0.0 and not brush_locked:
-                    axes = (18, 18)
-                    angle = 0
-                    startAngle = -90
-                    endAngle = int(-90 + (360 * dwell_progress))
-                    cv2.ellipse(vis, (px, py), axes, angle, startAngle, endAngle, (36, 165, 245), 2)
+                    axes = (20, 20)
+                    cv2.ellipse(vis, (px, py), axes, 0, -90, int(-90 + (360 * dwell_progress)), (36, 165, 245), 3)
 
                 # Pause countdown ring
                 if pause_progress > 0.0:
-                    axes = (24, 24)
-                    angle = 0
-                    startAngle = -90
-                    endAngle = int(-90 + (360 * pause_progress))
-                    cv2.ellipse(vis, (px, py), axes, angle, startAngle, endAngle, (36, 165, 245), 2)
+                    axes = (26, 26)
+                    cv2.ellipse(vis, (px, py), axes, 0, -90, int(-90 + (360 * pause_progress)), (36, 165, 245), 3)
 
-            elif i in (4, 12, 16, 20):
-                cv2.circle(vis, (px, py), 3, (238, 211, 34) if not is_paused else (117, 101, 91), -1)
+            elif i in (4, 12, 16, 20):  # Fingertips
+                cv2.circle(vis, (px, py), 5, joint_color, -1)
+                cv2.circle(vis, (px, py), 5, (255, 255, 255), 1)
+            elif i == 0:  # Wrist
+                cv2.circle(vis, (px, py), 6, (255, 123, 47), -1)
             else:
-                cv2.circle(vis, (px, py), 2, (181, 164, 154), -1)
+                cv2.circle(vis, (px, py), 3, (255, 255, 255), -1)
 
-    # 3. Status Chip in Top Left
+        # Top status chip with hand info & confidence
+        conf_pct = int(getattr(hand, "confidence", 0.95) * 100)
+        chip_label = f"{status_text}  |  {hand.handedness} Hand ({conf_pct}%)"
+    else:
+        chip_label = status_text if status_text else "SEARCHING FOR HAND"
+
+    # Status Chip in Top Left
     cv2.putText(
         vis,
-        status_text,
-        (14, 24),
+        chip_label,
+        (16, 28),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.5,
+        0.55,
         (255, 123, 47) if not is_paused else (150, 150, 150),
-        1,
+        2,
         cv2.LINE_AA,
     )
 
