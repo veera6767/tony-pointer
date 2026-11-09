@@ -1,10 +1,12 @@
 {
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
   "python.analysis.extraPaths": [
-    "${workspaceFolder}/pointer_v"
+    "${workspaceFolder}/pointer_v",
+    "${workspaceFolder}"
   ],
   "python.autoComplete.extraPaths": [
-    "${workspaceFolder}/pointer_v"
-  ]
+    "${workspaceFolder}/pointer_v",
+    "${workspaceFolder}"
+  ],
+  "python.terminal.activateEnvironment": true
 }
-

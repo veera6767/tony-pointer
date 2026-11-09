@@ -1,0 +1,12 @@
+python-interpreter-path = ".venv/Scripts/python.exe"
+search-path = ["pointer_v", "."]
+project-excludes = [
+    "**/node_modules",
+    "**/dist",
+    "**/build",
+    "**/pointer_v/dist",
+    "**/pointer_v/build",
+    "**/pointer_v/_backups",
+    "**/.pytest_cache",
+    "**/.venv",
+]

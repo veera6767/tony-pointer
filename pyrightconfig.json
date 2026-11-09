@@ -1,7 +1,10 @@
 {
+  "pythonVersion": "3.12",
+  "venvPath": ".",
+  "venv": ".venv",
   "extraPaths": [
     "pointer_v",
-    "C:/Users/Veera Akash/AppData/Local/Programs/Python/Python312/Lib/site-packages"
+    "."
   ],
   "include": [
     "pointer_v",
@@ -11,12 +14,16 @@
   "exclude": [
     "**/node_modules",
     "**/__pycache__",
-    "pointer_v/dist",
-    "pointer_v/build",
+    "**/dist",
+    "**/build",
+    "**/pointer_v/dist",
+    "**/pointer_v/build",
+    "**/pointer_v/_old_ui",
+    "**/pointer_v/_backups",
+    "**/.pytest_cache",
     ".venv"
   ],
   "typeCheckingMode": "basic",
   "reportMissingImports": true,
-  "reportMissingTypeStubs": false,
-  "reportAttributeAccessIssue": "warning"
+  "reportMissingTypeStubs": false
 }

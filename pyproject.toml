@@ -1,0 +1,45 @@
+[project]
+name = "pointer-v"
+version = "2.0.1"
+description = "Hardware-level hand gesture PC controller with MediaPipe and PySide6"
+requires-python = ">=3.12"
+
+[tool.pyrefly]
+python-interpreter-path = ".venv/Scripts/python.exe"
+search-path = ["pointer_v", "."]
+project-excludes = [
+    "**/node_modules",
+    "**/dist",
+    "**/build",
+    "**/pointer_v/dist",
+    "**/pointer_v/build",
+    "**/pointer_v/_backups",
+    "**/.pytest_cache",
+    "**/.venv",
+]
+
+[tool.pyright]
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+extraPaths = ["pointer_v", "."]
+include = ["pointer_v", "scripts", "tests"]
+exclude = [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/dist",
+    "**/build",
+    "**/pointer_v/dist",
+    "**/pointer_v/build",
+    "**/pointer_v/_old_ui",
+    "**/pointer_v/_backups",
+    "**/.pytest_cache",
+    ".venv"
+]
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportMissingTypeStubs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["pointer_v", "."]
