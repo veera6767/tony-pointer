@@ -4,8 +4,6 @@ Interactive sandbox with live gesture confidence readouts and a built-in
 typing test input box for practicing air-typing without switching windows.
 """
 
-import time
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QPushButton, QTextEdit, QVBoxLayout, QWidget
 )

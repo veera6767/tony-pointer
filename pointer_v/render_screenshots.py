@@ -11,7 +11,6 @@ from pathlib import Path
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from keyboard_layout import KeyboardLayoutManager, Zone

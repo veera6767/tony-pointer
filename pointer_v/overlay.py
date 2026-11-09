@@ -17,18 +17,17 @@ import ctypes
 import math
 import sys
 import time
-from typing import Deque, List, Optional, Tuple
+from typing import Deque, Optional, Tuple
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer
 from PySide6.QtGui import (
-    QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen,
+    QBrush, QColor, QLinearGradient, QPainter, QPen,
     QPolygonF, QRadialGradient
 )
 from PySide6.QtWidgets import QWidget
 
 from theme import (
-    AMBER, BLUE, BLUE_BRIGHT, BLUE_DEEP, CYAN, GREEN, RADIUS_CONTROL,
-    RED, TEXT_DISABLED, TEXT_PRIMARY, VIOLET, get_mono_font, get_ui_font
+    AMBER, BLUE, BLUE_BRIGHT, BLUE_DEEP, CYAN, RED, TEXT_DISABLED, TEXT_PRIMARY, VIOLET, get_mono_font
 )
 
 # Win32 Constants
@@ -338,7 +337,7 @@ class CursorOverlayWindow(QWidget):
             r_out = base_ring_r + tick_len / 2.0
             p1 = QPointF(cx + r_in * math.cos(rad), cy + r_in * math.sin(rad))
             p2 = QPointF(cx + r_out * math.cos(rad), cy + r_out * math.sin(rad))
-            cv_line = painter.drawLine(p1, p2)
+            painter.drawLine(p1, p2)
 
         # 5. Dwell Progress Thin Arc
         if self.dwell_progress > 0.0 and self.state != "BRUSH_LOCKED":

@@ -4,18 +4,17 @@ Camera device selector, resolution options, FPS cap (15/30/60), Battery Saver,
 lighting warnings, monitor re-mapping selector, and interactive active-region editor.
 """
 
-from PySide6.QtCore import QRect, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel,
-    QPushButton, QSlider, QVBoxLayout, QWidget
+    QSlider, QVBoxLayout, QWidget
 )
 
 from camera import list_available_cameras
 from theme import (
-    AMBER, BG1_PANELS, BG2_CARDS, BLUE, BORDER, BORDER_STRONG,
-    CYAN, GREEN, RADIUS_CONTROL, RADIUS_PANEL, RED, TEXT_DISABLED,
-    TEXT_PRIMARY, TEXT_SECONDARY, get_mono_font, get_ui_font
+    AMBER, BG1_PANELS, BG2_CARDS, BORDER, BORDER_STRONG,
+    GREEN, RADIUS_CONTROL, RADIUS_PANEL, TEXT_PRIMARY, get_ui_font
 )
 
 

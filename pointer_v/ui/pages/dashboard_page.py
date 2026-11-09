@@ -9,16 +9,15 @@ Clean pro interface:
 - Quick actions: Open Keyboard, Paint Mode, Pause Tracking, Launch Calibration
 """
 
-from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 )
 
 from theme import (
-    AMBER, BG1_PANELS, BG2_CARDS, BLUE, BORDER, BORDER_STRONG,
-    CYAN, GREEN, RADIUS_CONTROL, RADIUS_PANEL, TEXT_DISABLED,
-    TEXT_PRIMARY, TEXT_SECONDARY, get_mono_font, get_ui_font
+    AMBER, BG1_PANELS, BG2_CARDS, BORDER, BORDER_STRONG,
+    CYAN, GREEN, RADIUS_CONTROL, RADIUS_PANEL, RED, TEXT_PRIMARY, TEXT_SECONDARY, VIOLET, get_mono_font, get_ui_font
 )
 from ui.widgets import ModeChip, ToggleSwitch
 

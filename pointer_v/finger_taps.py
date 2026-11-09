@@ -8,7 +8,7 @@ plus an inter-finger neighbor lockout to prevent false cross-fires.
 
 import collections
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from tracker import HandFrame
 

@@ -8,19 +8,18 @@ WS_EX_NOACTIVATE & WS_EX_TOOLWINDOW flags to guarantee focus is never stolen fro
 import ctypes
 import math
 import sys
-import time
 from typing import Dict, List, Optional, Set
 
 from PySide6.QtCore import QPoint, QRectF, Qt, QTimer
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
-from keyboard_layout import KeyDef, KeyboardLayoutManager, KeyboardWindow, Zone
+from keyboard_layout import KeyDef, KeyboardLayoutManager, Zone
 from keyboard_out import ModifierState
 from theme import (
-    AMBER, BG1_PANELS, BG2_CARDS, BG3_HOVER, BLUE, BLUE_BRIGHT,
-    BORDER, BORDER_STRONG, RADIUS_CONTROL, RADIUS_PANEL, TEXT_PRIMARY,
-    TEXT_SECONDARY, TEXT_DISABLED, VIOLET, get_mono_font, get_ui_font
+    AMBER, BLUE, BLUE_BRIGHT, BORDER, RADIUS_CONTROL,
+    TEXT_DISABLED, TEXT_PRIMARY, TEXT_SECONDARY, VIOLET,
+    get_mono_font, get_ui_font
 )
 
 GWL_EXSTYLE = -20

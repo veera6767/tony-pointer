@@ -11,7 +11,7 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -170,7 +170,6 @@ class HandTracker:
         logger = logging.getLogger(APP_NAME)
 
         try:
-            import mediapipe as mp
             from mediapipe.tasks import python
             from mediapipe.tasks.python import vision
 

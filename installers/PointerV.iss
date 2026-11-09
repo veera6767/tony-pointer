@@ -1,10 +1,10 @@
 ; Pointer V - Inno Setup Script
-; Generates installers/Output/PointerV-Setup-2.0.0.exe
+; Generates installers/Output/PointerV-Setup-2.0.1.exe
 
 #define MyAppName "Pointer V"
-#define MyAppVersion "2.0.0"
+#define MyAppVersion "2.0.1"
 #define MyAppPublisher "Veera Akash A"
-#define MyAppURL "https://github.com/veeraakash/pointer-v"
+#define MyAppURL "https://github.com/veera6767/tony-pointer"
 #define MyAppExeName "PointerV.exe"
 
 [Setup]

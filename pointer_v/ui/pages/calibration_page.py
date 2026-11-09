@@ -4,7 +4,7 @@ Step-by-step active-region corner calibration wizard with progress bar,
 large readable instructions, live coordinate display, and Skip button.
 """
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QMessageBox, QProgressBar, QPushButton,
     QVBoxLayout, QWidget

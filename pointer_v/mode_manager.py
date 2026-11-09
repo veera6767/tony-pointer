@@ -6,7 +6,6 @@ detects normalized whole-hand swipes for row/window sliding door navigation,
 manages dominant hand calibration (Left/Right/Auto), and remembers per-zone window positions.
 """
 
-import collections
 import enum
 import math
 import time

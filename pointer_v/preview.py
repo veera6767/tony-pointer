@@ -4,12 +4,12 @@ Floating borderless preview with 8px rounded corners, subtle 1px blue corner bra
 FPS telemetry chip, draggable handle, and configurable opacity.
 """
 
-from PySide6.QtCore import QPoint, QRectF, Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from theme import (
-    BLUE, BORDER, RADIUS_PANEL, TEXT_PRIMARY, get_mono_font
+    BORDER, RADIUS_PANEL, TEXT_PRIMARY, get_mono_font
 )
 
 

@@ -2,48 +2,72 @@
 setlocal
 
 echo ========================================================
-echo    POINTER V - STANDALONE EXECUTABLE BUILDER
+echo    POINTER V - STANDALONE EXECUTABLE BUILDER (v2.0.1)
 echo ========================================================
 echo.
 
 set "PY_CMD="
-where python >nul 2>&1
+where py >nul 2>&1
 if %errorlevel% equ 0 (
-    set "PY_CMD=python"
+    set "PY_CMD=py -3.12"
 ) else (
-    where py >nul 2>&1
+    where python >nul 2>&1
     if %errorlevel% equ 0 (
-        set "PY_CMD=py -3.12"
+        set "PY_CMD=python"
     ) else if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" (
         set "PY_CMD=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
     )
 )
 
 if "%PY_CMD%" == "" (
-    echo [ERROR] Python is not found in PATH!
-    echo Please install Python 3.11 or 3.12 from python.org and check "Add Python to PATH".
+    echo [ERROR] Python 3.12 is not found in PATH.
     exit /b 1
 )
 
-echo Using Python: %PY_CMD%
-echo.
-echo [1/3] Verifying dependencies from requirements.txt...
-"%PY_CMD%" -m pip install -r requirements.txt >nul 2>&1
+echo [GATE 1/3] Running Static Analysis and Automated Tests...
+echo --- 1a. Compiling Python bytecode...
+%PY_CMD% -m compileall .
 if %errorlevel% neq 0 (
-    echo [WARNING] Dependency check completed with warnings, continuing...
-)
-
-echo.
-echo [2/3] Building standalone onedir bundle with PyInstaller...
-"%PY_CMD%" -m PyInstaller --clean --noconfirm PointerV.spec
-if %errorlevel% neq 0 (
-    echo [ERROR] PyInstaller build failed.
+    echo [ERROR] python -m compileall failed. Aborting build.
     exit /b 1
 )
 
+echo --- 1b. Checking static analysis (ruff)...
+%PY_CMD% -m ruff check . --config ..\ruff.toml
+if %errorlevel% neq 0 (
+    echo [ERROR] Ruff lint checks failed. Aborting build.
+    exit /b 1
+)
+
+echo --- 1c. Running full automated test suite (pytest)...
+%PY_CMD% -m pytest ..\tests -q
+if %errorlevel% neq 0 (
+    echo [ERROR] Pytest test suite failed. Aborting build.
+    exit /b 1
+)
+echo [GATE 1 PASSED] Static checks and unit/smoke tests all passed cleanly.
+
 echo.
-echo [3/3] Build complete!
-echo Output folder: dist\PointerV\
-echo Executable: dist\PointerV\PointerV.exe
+echo [GATE 2/3] Building standalone onedir bundle with PyInstaller...
+%PY_CMD% -m PyInstaller --clean --noconfirm PointerV.spec
+if %errorlevel% neq 0 (
+    echo [ERROR] PyInstaller compilation failed.
+    exit /b 1
+)
+echo [GATE 2 PASSED] PyInstaller onedir bundle built in dist\PointerV\.
+
 echo.
+echo [GATE 3/3] Running Startup Self-Test Gate on built executable...
+dist\PointerV\PointerV.exe --selftest
+if %errorlevel% neq 0 (
+    echo [ERROR] Built dist\PointerV\PointerV.exe failed startup self-test.
+    exit /b 1
+)
+echo [GATE 3 PASSED] dist\PointerV\PointerV.exe verified alive and functional.
+
+echo.
+echo ========================================================
+echo Build Succeeded and Passed All Quality Gates
+echo Output: dist\PointerV\PointerV.exe
+echo ========================================================
 endlocal

@@ -4,10 +4,8 @@ Provides crisp, non-blocking audio cues for air clicks, modifier locks, and mode
 with global mute, volume thresholds, and Windows native WAV dispatch.
 """
 
-import os
 from pathlib import Path
 import sys
-from typing import Optional
 
 try:
     import winsound

@@ -8,7 +8,6 @@ line up perfectly with physical pixels across mixed-DPI multi-monitor setups.
 import ctypes
 from ctypes import wintypes
 import math
-import os
 import sys
 import time
 from typing import List, Optional, Tuple

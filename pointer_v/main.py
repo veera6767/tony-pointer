@@ -12,20 +12,58 @@ import os
 import sys
 import threading
 import time
+import traceback
 from pathlib import Path
 from typing import Optional
 
+
+def _install_startup_safety():
+    """Top-level exception hook that intercepts unhandled startup exceptions,
+
+    logs them to %APPDATA%\\PointerV\\logs\\startup.log, and shows a friendly error dialog.
+    """
+    def _handle_exception(exc_type, exc_value, exc_tb):
+        try:
+            appdata = os.environ.get("APPDATA")
+            log_dir = Path(appdata) / "PointerV" / "logs" if appdata else Path.home() / ".pointerv" / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_file = log_dir / "startup.log"
+            tb_str = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] UNHANDLED STARTUP EXCEPTION:\n{tb_str}\n")
+        except Exception:
+            pass
+
+        try:
+            if sys.platform.startswith("win"):
+                msg = (
+                    f"Pointer V encountered a problem during startup:\n\n"
+                    f"{exc_type.__name__}: {exc_value}\n\n"
+                    f"A detailed error log has been saved to:\n%APPDATA%\\PointerV\\logs\\startup.log\n\n"
+                    f"Please check your system drivers or copy the log details."
+                )
+                ctypes.windll.user32.MessageBoxW(0, msg, "Pointer V - Startup Error", 0x10)
+        except Exception:
+            pass
+        sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+    sys.excepthook = _handle_exception
+
+
+_install_startup_safety()
+
+import cv2
 import keyboard
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QIcon, QPainter, QPixmap, QColor
-from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QMessageBox
+from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
+from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from camera import CameraStream, draw_hud_landmarks
 from filters import OneEuroFilter2D
 from finger_taps import FingerTapDetector
-from gestures import GestureAction, GestureEngine
-from keyboard_layout import KeyboardLayoutManager, KeyboardWindow, Zone
-from keyboard_out import ModifierState, Win32KeyboardOutput
+from gestures import GestureAction, GestureEngine, PoseType
+from keyboard_layout import KeyboardLayoutManager
+from keyboard_out import Win32KeyboardOutput
 from keyboard_ui import FloatingAirKeyboardWidget
 from logger import log_input_event, setup_logger
 from mode_manager import AppMode, ModeManager
@@ -38,7 +76,7 @@ from sound import SoundManager
 from tracker import HandTracker
 from ui.main_window import MainWindow
 from version import (
-    APP_NAME, APP_SHORT_NAME, APP_TAGLINE, MUTEX_NAME, __version__
+    APP_NAME, MUTEX_NAME, __version__
 )
 
 
@@ -57,9 +95,10 @@ class WorkerSignals(QObject):
 class PointerVApp(QObject):
     """Coordinates hardware capture, gesture tracking, overlays, mouse input, and air keyboard."""
 
-    def __init__(self, app: QApplication):
+    def __init__(self, app: QApplication, is_selftest: bool = False):
         super().__init__()
         self.app = app
+        self.is_selftest = is_selftest
         self.logger = setup_logger()
         self.settings_manager = SettingsManager()
         self.settings = self.settings_manager.config
@@ -206,7 +245,8 @@ class PointerVApp(QObject):
         atexit.register(self.emergency_release_all)
 
         # 9. Start Camera Stream
-        self.camera.start()
+        if not self.is_selftest:
+            self.camera.start()
 
         # 10. Background Vision Processing Loop
         self.running = True
@@ -221,6 +261,9 @@ class PointerVApp(QObject):
         # Show main window or start minimized
         if not self.settings.start_minimized:
             self.main_window.show()
+
+        if self.is_selftest:
+            self._run_selftest_sequence()
 
     def _get_tray_icon(self) -> QIcon:
         """Selects tray icon matching current mode and paused state."""
@@ -363,7 +406,7 @@ class PointerVApp(QObject):
             self.mouse.emergency_release()
             self.keyboard_out.release_all_modifiers()
             self.gesture_engine.brush_locked = False
-        except Exception as e:
+        except Exception:
             pass
 
     def _toggle_paint_mode(self):
@@ -914,6 +957,63 @@ class PointerVApp(QObject):
         self.app.quit()
 
 
+    def _run_selftest_sequence(self):
+        """Executes automated startup validation for CI and build gates.
+
+        Confirms UI event loop, model loading, and overlay initialization,
+        then writes PASS/FAIL to %APPDATA%\\PointerV\\logs\\selftest.log and exits.
+        """
+        self.logger.info("Executing Pointer V automated startup self-test...")
+
+        def _verify():
+            try:
+                model_loaded = getattr(self.tracker, "is_loaded", False)
+                load_error = getattr(self.tracker, "load_error", None)
+                ui_active = bool(self.main_window is not None)
+                settings_ok = bool(self.settings is not None)
+                overlay_ok = bool(getattr(self, "cursor_overlay", None) is not None)
+                hud_ok = bool(getattr(self, "keyboard_overlay", None) is not None)
+
+                passed = model_loaded and ui_active and settings_ok and overlay_ok and hud_ok
+                status_text = "PASS" if passed else "FAIL"
+
+                appdata = os.environ.get("APPDATA")
+                log_dir = Path(appdata) / "PointerV" / "logs" if appdata else Path.home() / ".pointerv" / "logs"
+                log_dir.mkdir(parents=True, exist_ok=True)
+                selftest_log = log_dir / "selftest.log"
+
+                report = (
+                    f"[{status_text}] Pointer V Startup Self-Test Report\n"
+                    f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"Version: {__version__}\n"
+                    f"UI Event Loop: Responsive\n"
+                    f"Main Window: {'OK' if ui_active else 'FAIL'}\n"
+                    f"Settings System: {'OK' if settings_ok else 'FAIL'}\n"
+                    f"MediaPipe Model Loaded: {model_loaded} (details: {load_error or 'OK'})\n"
+                    f"Cursor Overlay: {'OK' if overlay_ok else 'FAIL'}\n"
+                    f"Corner Keyboard Window: {'OK' if hud_ok else 'FAIL'}\n"
+                    f"Overall Result: {status_text}\n"
+                )
+
+                try:
+                    with open(selftest_log, "w", encoding="utf-8") as f:
+                        f.write(report)
+                except Exception as e:
+                    print(f"[SelfTest] Warning writing log: {e}")
+
+                self.selftest_passed = passed
+                print(report)
+                self.shutdown()
+                threading.Timer(1.0, lambda: os._exit(0 if passed else 1)).start()
+            except Exception as e:
+                import traceback
+                print(f"[SelfTest] Verification error: {e}")
+                traceback.print_exc()
+                os._exit(1)
+
+        QTimer.singleShot(4000, _verify)
+
+
 def check_single_instance() -> Optional[int]:
     """Ensures only a single instance of Pointer V runs simultaneously."""
     if not sys.platform.startswith("win"):
@@ -931,10 +1031,13 @@ def check_single_instance() -> Optional[int]:
 
 
 def main():
-    mutex = check_single_instance()
-    if mutex is None:
-        print(f"[{APP_NAME}] Another instance is already running. Focusing running instance and exiting.")
-        sys.exit(0)
+    is_selftest = "--selftest" in sys.argv
+
+    if not is_selftest:
+        mutex = check_single_instance()
+        if mutex is None:
+            print(f"[{APP_NAME}] Another instance is already running. Focusing running instance and exiting.")
+            sys.exit(0)
 
     os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
     os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
@@ -953,8 +1056,11 @@ def main():
     app.setApplicationName(APP_NAME)
     app.setQuitOnLastWindowClosed(False)
 
-    pv_app = PointerVApp(app)
-    sys.exit(app.exec())
+    pv_app = PointerVApp(app, is_selftest=is_selftest)
+    ret = app.exec()
+    if is_selftest:
+        sys.exit(0 if getattr(pv_app, "selftest_passed", False) else 1)
+    sys.exit(ret)
 
 
 if __name__ == "__main__":

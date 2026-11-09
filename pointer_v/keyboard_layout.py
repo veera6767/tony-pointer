@@ -6,8 +6,8 @@ and seamless inter-zone navigation.
 """
 
 import enum
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import List, Optional
 
 
 class Zone(enum.Enum):

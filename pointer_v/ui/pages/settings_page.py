@@ -5,18 +5,15 @@ Form rows with label on left, control on right, helper text underneath.
 Export/Import settings JSON and per-section reset to defaults.
 """
 
-from dataclasses import asdict
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFrame, QFormLayout,
-    QGroupBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, QScrollArea,
+    QHBoxLayout, QLabel, QMessageBox, QPushButton, QScrollArea,
     QSlider, QSpinBox, QVBoxLayout, QWidget, QLineEdit
 )
 
-from settings import AppConfig
 from theme import (
-    BG1_PANELS, BG2_CARDS, BLUE, BORDER, BORDER_STRONG,
-    RADIUS_CONTROL, RADIUS_PANEL, RED, TEXT_DISABLED,
+    BG1_PANELS, BLUE, BORDER, RADIUS_PANEL, TEXT_DISABLED,
     TEXT_PRIMARY, TEXT_SECONDARY, get_mono_font, get_ui_font
 )
 
@@ -57,7 +54,7 @@ class SettingsPage(QWidget):
         # Scroll Area for grouped forms
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet(f"QScrollArea {{ border: none; background-color: transparent; }}")
+        scroll.setStyleSheet("QScrollArea { border: none; background-color: transparent; }")
 
         container = QWidget()
         form_layout = QVBoxLayout(container)

@@ -4,16 +4,15 @@ Pointer V - First-Run Interactive Tutorial Dialog
 clear line hints, and 'Don't show on startup' preference saving.
 """
 
-from PySide6.QtCore import QPoint, Qt, QTimer
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QCheckBox, QDialog, QFrame, QHBoxLayout, QLabel, QProgressBar,
-    QPushButton, QVBoxLayout, QWidget
+    QPushButton, QVBoxLayout
 )
 
 from theme import (
-    AMBER, BG0_WINDOW, BG1_PANELS, BG2_CARDS, BLUE, BORDER,
-    BORDER_STRONG, GREEN, RADIUS_CONTROL, RADIUS_PANEL, TEXT_DISABLED,
+    AMBER, BG0_WINDOW, BG1_PANELS, BLUE, BORDER,
+    GREEN, RADIUS_PANEL, TEXT_DISABLED,
     TEXT_PRIMARY, TEXT_SECONDARY, get_mono_font, get_ui_font
 )
 

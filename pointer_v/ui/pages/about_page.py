@@ -17,9 +17,8 @@ from PySide6.QtWidgets import (
 
 from logger import generate_diagnostics_report, get_logs_dir
 from theme import (
-    BG1_PANELS, BG2_CARDS, BLUE, BORDER, BORDER_STRONG,
-    RADIUS_CONTROL, RADIUS_PANEL, TEXT_DISABLED, TEXT_PRIMARY,
-    TEXT_SECONDARY, get_mono_font, get_ui_font
+    BG1_PANELS, BLUE, BORDER, RADIUS_PANEL, TEXT_PRIMARY,
+    TEXT_SECONDARY, get_ui_font
 )
 from version import APP_NAME, APP_TAGLINE, COMPANY_NAME, COPYRIGHT, __version__
 

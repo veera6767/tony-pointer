@@ -1,0 +1,30 @@
+# Ruff configuration for Pointer V
+target-version = "py312"
+line-length = 120
+
+exclude = [
+    ".git",
+    ".pytest_cache",
+    "__pycache__",
+    "build",
+    "dist",
+    "pointer_v/build",
+    "pointer_v/dist",
+    "pointer_v/_backups",
+    "pointer_v/_old_ui",
+    "node_modules",
+]
+
+[lint]
+select = [
+    "E9",      # Syntax and runtime errors
+    "F821",    # Undefined name (NameError at runtime)
+    "F401",    # Unused imports
+    "F822",    # Undefined export in __all__
+    "F823",    # Local variable referenced before assignment
+]
+ignore = []
+
+[lint.per-file-ignores]
+"tests/*" = ["F401"]
+

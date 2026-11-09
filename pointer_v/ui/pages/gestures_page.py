@@ -5,14 +5,12 @@ plus per-finger curl meters for anatomical debugging.
 """
 
 from typing import Dict
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QFrame, QGridLayout, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget
+    QFrame, QHBoxLayout, QLabel, QProgressBar, QVBoxLayout, QWidget
 )
 
 from theme import (
-    BG1_PANELS, BG2_CARDS, BG3_HOVER, BLUE, BORDER, BORDER_STRONG,
-    RADIUS_CONTROL, RADIUS_PANEL, TEXT_DISABLED, TEXT_PRIMARY,
+    BG1_PANELS, BG2_CARDS, BG3_HOVER, BLUE, BORDER, RADIUS_CONTROL, RADIUS_PANEL, TEXT_DISABLED, TEXT_PRIMARY,
     TEXT_SECONDARY, get_mono_font, get_ui_font
 )
 

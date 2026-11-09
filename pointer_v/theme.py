@@ -6,7 +6,7 @@ No hardcoded colors elsewhere.
 """
 
 from pathlib import Path
-from PySide6.QtGui import QColor, QFont, QFontDatabase
+from PySide6.QtGui import QFont, QFontDatabase
 
 
 # ============================================================================

@@ -9,10 +9,9 @@ import copy
 import json
 import os
 import shutil
-import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from version import APP_NAME, APPDATA_DIR_NAME, OLD_APPDATA_DIR_NAME
 

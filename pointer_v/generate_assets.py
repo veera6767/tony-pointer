@@ -3,7 +3,6 @@ Pointer V - Branding Asset Generator
 Generates original logo.svg, multi-resolution .ico (16..256), tray icons, and splash image.
 """
 
-import os
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 

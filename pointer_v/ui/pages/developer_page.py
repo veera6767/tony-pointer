@@ -6,20 +6,18 @@ STRICT PRIVACY: Never shows or logs typed characters or key names.
 """
 
 import time
-from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict
 
-from PySide6.QtCore import QPoint, Qt, QTimer, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QMessageBox, QPushButton, QTextEdit, QVBoxLayout, QWidget
+    QMessageBox, QPushButton, QVBoxLayout, QWidget
 )
 
-from recorder import LandmarkRecorder, LandmarkReplayer
+from recorder import LandmarkRecorder
 from theme import (
-    AMBER, BG1_PANELS, BG2_CARDS, BG3_HOVER, BLUE, BLUE_BRIGHT,
-    BORDER, BORDER_STRONG, CYAN, GREEN, RADIUS_CONTROL, RADIUS_PANEL,
-    RED, TEXT_DISABLED, TEXT_PRIMARY, TEXT_SECONDARY, VIOLET,
+    AMBER, BG1_PANELS, BG2_CARDS, BLUE, BORDER, BORDER_STRONG, CYAN, GREEN, RADIUS_CONTROL, RADIUS_PANEL,
+    RED, TEXT_PRIMARY, TEXT_SECONDARY, VIOLET,
     get_mono_font, get_ui_font
 )
 

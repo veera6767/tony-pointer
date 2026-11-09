@@ -4,17 +4,15 @@ Includes ToggleSwitch, ModeChip, CustomTitleBar, SidebarRail, and StatusBarWidge
 Adheres strictly to theme tokens without hardcoded colors.
 """
 
-from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtCore import QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
+    QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 )
 
 from theme import (
-    AMBER, BG0_WINDOW, BG1_PANELS, BG2_CARDS, BG3_HOVER, BLUE, BLUE_BRIGHT,
-    BORDER, BORDER_STRONG, CYAN, GREEN, MODE_COLORS, RADIUS_CONTROL, RADIUS_PANEL,
-    RED, TEXT_DISABLED, TEXT_PRIMARY, TEXT_SECONDARY, VIOLET,
-    get_mono_font, get_ui_font
+    AMBER, BG1_PANELS, BG2_CARDS, BG3_HOVER, BLUE, BLUE_BRIGHT,
+    BORDER, BORDER_STRONG, GREEN, RADIUS_CONTROL, RED, TEXT_DISABLED, TEXT_PRIMARY, TEXT_SECONDARY, get_mono_font, get_ui_font
 )
 
 
@@ -115,9 +113,6 @@ class ModeChip(QWidget):
             color = QColor(GREEN)
             text = "OUTPUT ACTIVE"
 
-        # Adjust width dynamically for text
-        fm = painter.fontMetrics()
-        w = max(self.width(), fm.horizontalAdvance(text) + 24)
         h = self.height()
 
         # Pill background

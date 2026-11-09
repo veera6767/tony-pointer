@@ -5,16 +5,15 @@ central stacked page deck (Dashboard, Camera, Gestures, Keyboard, Practice, Sett
 Calibration, About, Developer), and bottom telemetry status bar.
 """
 
-from typing import Callable, Dict, Optional
-from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
+from typing import Callable
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QMainWindow, QStackedWidget, QVBoxLayout, QWidget
+    QHBoxLayout, QLabel, QMainWindow, QStackedWidget, QVBoxLayout, QWidget
 )
 
 from recorder import LandmarkRecorder
 from theme import (
-    BG0_WINDOW, BORDER, RADIUS_WINDOW, TEXT_PRIMARY, get_global_stylesheet,
+    BG0_WINDOW, get_global_stylesheet,
     init_fonts
 )
 from ui.pages.about_page import AboutPage
@@ -267,7 +266,7 @@ class MainWindow(QMainWindow):
             self.page_dev.update_telemetry(telem)
 
     def _restore_geometry(self):
-        from PySide6.QtCore import QPoint, QRect, QSize
+        from PySide6.QtCore import QRect
         from PySide6.QtGui import QGuiApplication
 
         geom = self.settings.window_geometry.get("main", [100, 100, 1080, 700])

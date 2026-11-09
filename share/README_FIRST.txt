@@ -1,5 +1,5 @@
 ======================================================================
-                     POINTER V (PV) - v2.0.0
+                     POINTER V (PV) - v2.0.1
        Native Windows Hand Gesture Mouse & Air Keyboard Controller
 ======================================================================
 
@@ -18,7 +18,7 @@ to control Windows with your hand using an ordinary webcam.
 ----------------------------------------------------------------------
 2. HOW TO INSTALL
 ----------------------------------------------------------------------
-1. Double-click "PointerV-Setup-2.0.0.exe".
+1. Double-click "PointerV-Setup-2.0.1.exe".
 2. If Windows SmartScreen displays "Windows protected your PC":
    - Click "More info"
    - Click "Run anyway"

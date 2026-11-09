@@ -9,7 +9,7 @@ import json
 import math
 import time
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from tracker import HandFrame, LandmarkPoint
 

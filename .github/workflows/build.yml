@@ -10,7 +10,7 @@ on:
 
 jobs:
   test:
-    name: Unit Tests (Python ${{ matrix.python-version }})
+    name: Unit & Smoke Tests (Python ${{ matrix.python-version }})
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -31,9 +31,17 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r pointer_v/requirements.txt
-          pip install pytest
+          pip install pytest ruff pyflakes
 
-      - name: Run Pytest Suite
+      - name: Gate 1a - Compile Python Bytecode
+        run: |
+          python -m compileall pointer_v
+
+      - name: Gate 1b - Static Analysis (Ruff)
+        run: |
+          python -m ruff check pointer_v
+
+      - name: Gate 1c - Run Pytest Suite
         run: |
           pytest tests -v
 
@@ -81,38 +89,54 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r pointer_v/requirements.txt
-          pip install pyinstaller
+          pip install pyinstaller pytest ruff
 
       - name: Install Inno Setup
         run: |
           choco install innosetup -y --no-progress
 
-      - name: Build PyInstaller Onedir Bundle
+      - name: Gate 2 - Build PyInstaller Onedir Bundle
         working-directory: pointer_v
         run: |
           pyinstaller --clean --noconfirm PointerV.spec
 
-      - name: Create Portable Zip
-        working-directory: pointer_v/dist
+      - name: Gate 3 - Validate Standalone Dist Binary Self-Test
+        working-directory: pointer_v
         run: |
-          Compress-Archive -Path PointerV -DestinationPath PointerV-Portable-2.0.0.zip -Force
+          dist\PointerV\PointerV.exe --selftest
 
-      - name: Compile Inno Setup Installer
+      - name: Gate 4 - Compile Inno Setup Installer (v2.0.1)
         working-directory: installers
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" PointerV.iss
+
+      - name: Gate 5 - Test Silent Installation & Installed Binary Self-Test
+        shell: pwsh
+        run: |
+          $testDir = "$env:TEMP\PointerV_CITest"
+          & "installers\Output\PointerV-Setup-2.0.1.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="$testDir"
+          & "$testDir\PointerV.exe" --selftest
+          if ($LASTEXITCODE -ne 0) { throw "Installed binary failed --selftest with exit code $LASTEXITCODE" }
+          & "$testDir\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+          Start-Sleep -Seconds 2
+          Remove-Item -Path $testDir -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Create Portable Zip
+        working-directory: pointer_v/dist
+        run: |
+          Compress-Archive -Path PointerV -DestinationPath PointerV-Portable-2.0.1.zip -Force
 
       - name: Compute Checksums
         working-directory: installers
         shell: pwsh
         run: |
-          $installer = "Output/PointerV-Setup-2.0.0.exe"
-          $zip = "../pointer_v/dist/PointerV-Portable-2.0.0.zip"
+          $installer = "Output/PointerV-Setup-2.0.1.exe"
+          $zip = "../pointer_v/dist/PointerV-Portable-2.0.1.zip"
           $hash1 = (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLower()
           $hash2 = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
           
-          "$hash1  PointerV-Setup-2.0.0.exe" | Out-File -FilePath Output/SHA256SUMS.txt -Encoding utf8
-          "$hash2  PointerV-Portable-2.0.0.zip" | Out-File -FilePath Output/SHA256SUMS.txt -Append -Encoding utf8
+          "$hash1  PointerV-Setup-2.0.1.exe" | Out-File -FilePath Output/SHA256SUMS.txt -Encoding utf8
+          "$hash2  PointerV-Portable-2.0.1.zip" | Out-File -FilePath Output/SHA256SUMS.txt -Append -Encoding utf8
           
           Copy-Item $zip -Destination Output/
           Get-Content Output/SHA256SUMS.txt
@@ -120,9 +144,9 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: PointerV-Windows-v2.0.0
+          name: PointerV-Windows-v2.0.1
           path: |
-            installers/Output/PointerV-Setup-2.0.0.exe
-            installers/Output/PointerV-Portable-2.0.0.zip
+            installers/Output/PointerV-Setup-2.0.1.exe
+            installers/Output/PointerV-Portable-2.0.1.zip
             installers/Output/SHA256SUMS.txt
           if-no-files-found: error

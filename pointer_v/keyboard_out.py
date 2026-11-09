@@ -10,7 +10,7 @@ import ctypes
 import enum
 import sys
 import time
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, Optional, Set, Tuple
 
 # Win32 Constants
 INPUT_KEYBOARD = 1

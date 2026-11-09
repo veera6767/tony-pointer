@@ -9,9 +9,9 @@ import collections
 import enum
 import math
 import time
-from typing import Callable, Deque, Dict, Optional, Tuple
+from typing import Deque, Dict, Optional, Tuple
 
-from filters import PositionHistoryBuffer, apply_acceleration
+from filters import PositionHistoryBuffer
 from tracker import HandFrame
 
 
