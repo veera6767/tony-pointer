@@ -64,7 +64,7 @@ class KeyboardPage(QWidget):
         self.chk_thumb.toggled.connect(self._save_settings)
         l_form.addRow("Thumb Action:", self.chk_thumb)
 
-        self.spin_opacity = QSlider(Qt.Horizontal)
+        self.spin_opacity = QSlider(Qt.Orientation.Horizontal)
         self.spin_opacity.setRange(40, 100)
         self.spin_opacity.setValue(int(self.settings.keyboard.opacity * 100))
         self.spin_opacity.valueChanged.connect(self._save_settings)

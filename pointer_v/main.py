@@ -166,6 +166,7 @@ class PointerVApp(QObject):
         self.total_frames = 0
         self.frames_with_hand = 0
         self.internal_errors = collections.deque(maxlen=5)
+        self.selftest_passed = False
 
         # Shared Status Telemetry (Strict Privacy: No typed characters or key names)
         self.telemetry = {
@@ -267,7 +268,7 @@ class PointerVApp(QObject):
 
     def _get_tray_icon(self) -> QIcon:
         """Selects tray icon matching current mode and paused state."""
-        base = Path(sys._MEIPASS) if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS") else Path(__file__).resolve().parent
+        base = Path(getattr(sys, "_MEIPASS", "")) if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS") else Path(__file__).resolve().parent
         if (base / "pointer_v" / "assets" / "icons").exists():
             icons_dir = base / "pointer_v" / "assets" / "icons"
         elif (base / "assets" / "icons").exists():
@@ -290,10 +291,10 @@ class PointerVApp(QObject):
 
         # Fallback dynamic pixmap
         pix = QPixmap(32, 32)
-        pix.fill(Qt.transparent)
+        pix.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pix)
-        painter.setRenderHint(QPainter.Antialiasing, True)
-        painter.setBrush(QColor(47, 123, 255 if self.is_active else 100, 116, 139))
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setBrush(QColor(47, 123, 255) if self.is_active else QColor(100, 116, 139))
         painter.drawEllipse(2, 2, 28, 28)
         painter.end()
         return QIcon(pix)
@@ -341,7 +342,7 @@ class PointerVApp(QObject):
         self.action_paint.setText(f"Paint Mode: {'ON' if self.paint_profile_active else 'OFF'}")
 
     def _on_tray_activated(self, reason):
-        if reason == QSystemTrayIcon.DoubleClick:
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             self.main_window.showNormal()
             self.main_window.activateWindow()
 
@@ -353,10 +354,10 @@ class PointerVApp(QObject):
         if new_paused:
             self.emergency_release_all()
             self.sound.warning()
-            self.tray.showMessage(APP_NAME, "Tracking Paused (Output suppressed)", QSystemTrayIcon.Information, 1500)
+            self.tray.showMessage(APP_NAME, "Tracking Paused (Output suppressed)", QSystemTrayIcon.MessageIcon.Information, 1500)
         else:
             self.sound.lock()
-            self.tray.showMessage(APP_NAME, "Tracking Resumed", QSystemTrayIcon.Information, 1500)
+            self.tray.showMessage(APP_NAME, "Tracking Resumed", QSystemTrayIcon.MessageIcon.Information, 1500)
         self._update_tray_visuals()
 
     def _toggle_keyboard_mode(self):
@@ -479,7 +480,7 @@ class PointerVApp(QObject):
             self.tray.showMessage(
                 f"{APP_NAME} Engaged",
                 "Webcam hand control is active. Press Ctrl+Alt+T anytime to toggle.",
-                QSystemTrayIcon.Information,
+                QSystemTrayIcon.MessageIcon.Information,
                 2000,
             )
         else:
@@ -514,7 +515,7 @@ class PointerVApp(QObject):
                 self.logger.error(f"Failed to elevate to Administrator: {e}")
 
     def _show_tray_message(self, title: str, message: str):
-        self.tray.showMessage(title, message, QSystemTrayIcon.Information, 2000)
+        self.tray.showMessage(title, message, QSystemTrayIcon.MessageIcon.Information, 2000)
 
     def _on_settings_reloaded(self):
         self._apply_filter_profile()

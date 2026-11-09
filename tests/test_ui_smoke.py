@@ -183,9 +183,9 @@ def test_dialogs_overlays_and_hud_render_cleanly(qapp, mock_environment):
 
 @patch("PySide6.QtWidgets.QFileDialog.getOpenFileName", return_value=("", ""))
 @patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=("", ""))
-@patch("PySide6.QtWidgets.QMessageBox.question", return_value=QMessageBox.Yes)
-@patch("PySide6.QtWidgets.QMessageBox.warning", return_value=QMessageBox.Ok)
-@patch("PySide6.QtWidgets.QMessageBox.information", return_value=QMessageBox.Ok)
+@patch("PySide6.QtWidgets.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes)
+@patch("PySide6.QtWidgets.QMessageBox.warning", return_value=QMessageBox.StandardButton.Ok)
+@patch("PySide6.QtWidgets.QMessageBox.information", return_value=QMessageBox.StandardButton.Ok)
 @patch("mouse.ctypes.windll.user32.SendInput", return_value=1)
 def test_click_every_button_and_toggle(mock_sendinput, mock_info, mock_warn, mock_quest, mock_save, mock_open, qapp, mock_environment):
     """Finds all buttons and toggle switches on every page and triggers them without exception."""

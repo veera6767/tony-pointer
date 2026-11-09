@@ -28,7 +28,7 @@ class ActiveRegionCanvas(QLabel):
         self.settings = settings
         self.setFixedSize(520, 320)
         self.setStyleSheet(f"background-color: {BG2_CARDS}; border: 1px solid {BORDER_STRONG}; border-radius: {RADIUS_CONTROL}px;")
-        self.setAlignment(Qt.AlignCenter)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.current_frame = None
 
     def set_frame(self, frame_bgr):
@@ -36,9 +36,9 @@ class ActiveRegionCanvas(QLabel):
         if frame_bgr is not None:
             h, w, ch = frame_bgr.shape
             rgb = frame_bgr[:, :, ::-1].copy()
-            q_img = QImage(rgb.data, w, h, ch * w, QImage.Format_RGB888)
+            q_img = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
             pix = QPixmap.fromImage(q_img).scaled(
-                self.width(), self.height(), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                self.width(), self.height(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
             )
             self.setPixmap(pix)
 
@@ -135,28 +135,28 @@ class CameraPage(QWidget):
         ctrl_layout.addWidget(QLabel("Active Region Bounds:"))
 
         ar_grid = QGridLayout()
-        self.slider_xmin = QSlider(Qt.Horizontal)
+        self.slider_xmin = QSlider(Qt.Orientation.Horizontal)
         self.slider_xmin.setRange(5, 40)
         self.slider_xmin.setValue(int(self.settings.active_region.x_min * 100))
         self.slider_xmin.valueChanged.connect(self._save_settings)
         ar_grid.addWidget(QLabel("Left Margin:"), 0, 0)
         ar_grid.addWidget(self.slider_xmin, 0, 1)
 
-        self.slider_xmax = QSlider(Qt.Horizontal)
+        self.slider_xmax = QSlider(Qt.Orientation.Horizontal)
         self.slider_xmax.setRange(60, 95)
         self.slider_xmax.setValue(int(self.settings.active_region.x_max * 100))
         self.slider_xmax.valueChanged.connect(self._save_settings)
         ar_grid.addWidget(QLabel("Right Margin:"), 1, 0)
         ar_grid.addWidget(self.slider_xmax, 1, 1)
 
-        self.slider_ymin = QSlider(Qt.Horizontal)
+        self.slider_ymin = QSlider(Qt.Orientation.Horizontal)
         self.slider_ymin.setRange(5, 40)
         self.slider_ymin.setValue(int(self.settings.active_region.y_min * 100))
         self.slider_ymin.valueChanged.connect(self._save_settings)
         ar_grid.addWidget(QLabel("Top Margin:"), 2, 0)
         ar_grid.addWidget(self.slider_ymin, 2, 1)
 
-        self.slider_ymax = QSlider(Qt.Horizontal)
+        self.slider_ymax = QSlider(Qt.Orientation.Horizontal)
         self.slider_ymax.setRange(60, 95)
         self.slider_ymax.setValue(int(self.settings.active_region.y_max * 100))
         self.slider_ymax.valueChanged.connect(self._save_settings)

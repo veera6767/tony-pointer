@@ -83,14 +83,14 @@ class CursorOverlayWindow(QWidget):
         self.settings = settings
 
         self.setWindowFlags(
-            Qt.WindowStaysOnTopHint
-            | Qt.FramelessWindowHint
-            | Qt.Tool
-            | Qt.WindowTransparentForInput
-            | Qt.WindowDoesNotAcceptFocus
+            Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Tool
+            | Qt.WindowType.WindowTransparentForInput
+            | Qt.WindowType.WindowDoesNotAcceptFocus
         )
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
 
         self.box_size = 128
         self.resize(self.box_size, self.box_size)
@@ -254,7 +254,7 @@ class CursorOverlayWindow(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         cx = self.box_size / 2.0
         cy = self.box_size / 2.0
@@ -293,7 +293,7 @@ class CursorOverlayWindow(QWidget):
                 alpha = int(40.0 * (i + 1) / len(trail_list))
                 t_color = QColor(pri_col.red(), pri_col.green(), pri_col.blue(), alpha)
                 r_trail = (2.0 + 3.0 * (i / len(trail_list))) * scale
-                painter.setPen(Qt.NoPen)
+                painter.setPen(Qt.PenStyle.NoPen)
                 painter.setBrush(QBrush(t_color))
                 painter.drawEllipse(QPointF(lx, ly), r_trail, r_trail)
 
@@ -304,7 +304,7 @@ class CursorOverlayWindow(QWidget):
             glow_grad.setColorAt(0.0, QColor(pri_col.red(), pri_col.green(), pri_col.blue(), 75))
             glow_grad.setColorAt(0.5, QColor(pri_col.red(), pri_col.green(), pri_col.blue(), 25))
             glow_grad.setColorAt(1.0, QColor(pri_col.red(), pri_col.green(), pri_col.blue(), 0))
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QBrush(glow_grad))
             painter.drawEllipse(QPointF(cx, cy), glow_rad, glow_rad)
 
@@ -313,7 +313,7 @@ class CursorOverlayWindow(QWidget):
             r_col = QColor(bgt_col)
             r_col.setAlphaF(self.ripple_opacity)
             painter.setPen(QPen(r_col, 2.0))
-            painter.setBrush(Qt.NoBrush)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawEllipse(QPointF(cx, cy), self.ripple_radius * scale, self.ripple_radius * scale)
 
         # 4. Outer Gaming Reticle Ring with 4 Corner Ticks
@@ -323,9 +323,9 @@ class CursorOverlayWindow(QWidget):
 
         ring_pen = QPen(QColor(pri_col.red(), pri_col.green(), pri_col.blue(), 140), 1.2)
         if self.state == "LOST":
-            ring_pen.setStyle(Qt.DashLine)
+            ring_pen.setStyle(Qt.PenStyle.DashLine)
         painter.setPen(ring_pen)
-        painter.setBrush(Qt.NoBrush)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawEllipse(QPointF(cx, cy), base_ring_r, base_ring_r)
 
         # 4 Corner Ticks on the outer ring (0, 90, 180, 270 deg)
@@ -342,7 +342,7 @@ class CursorOverlayWindow(QWidget):
         # 5. Dwell Progress Thin Arc
         if self.dwell_progress > 0.0 and self.state != "BRUSH_LOCKED":
             painter.setPen(QPen(QColor(AMBER), 2.2))
-            painter.setBrush(Qt.NoBrush)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             r_dwell = (base_ring_r + 5.0 * scale)
             rect_dwell = QRectF(cx - r_dwell, cy - r_dwell, r_dwell * 2, r_dwell * 2)
             span_angle = int(self.dwell_progress * 360 * 16)
@@ -351,7 +351,7 @@ class CursorOverlayWindow(QWidget):
         # 6. Hold Progress Radial Arc (Open Palm or Fist hold)
         if self.hold_progress > 0.0:
             painter.setPen(QPen(self.hold_color, 2.5))
-            painter.setBrush(Qt.NoBrush)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             r_hold = (base_ring_r + 9.0 * scale)
             rect_hold = QRectF(cx - r_hold, cy - r_hold, r_hold * 2, r_hold * 2)
             span_angle = int(self.hold_progress * 360 * 16)
@@ -375,7 +375,7 @@ class CursorOverlayWindow(QWidget):
         painter.drawPolygon(pointer)
 
         # 8. White Hotspot Dot at Tip
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(QColor(255, 255, 255)))
         painter.drawEllipse(QPointF(cx, cy), 2.0 * scale, 2.0 * scale)
 
@@ -397,4 +397,4 @@ class CursorOverlayWindow(QWidget):
 
             painter.setFont(get_mono_font(8, bold=True))
             painter.setPen(QPen(text_color))
-            painter.drawText(QRectF(chip_x, chip_y, chip_w, chip_h), Qt.AlignCenter, self.mode_chip_text)
+            painter.drawText(QRectF(chip_x, chip_y, chip_w, chip_h), Qt.AlignmentFlag.AlignCenter, self.mode_chip_text)

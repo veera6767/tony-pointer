@@ -62,7 +62,7 @@ class OneEuroFilter:
         if timestamp is None:
             timestamp = time.perf_counter()
 
-        if self.last_time is None:
+        if self.last_time is None or self.last_x is None:
             self.last_time = timestamp
             self.last_x = x
             return self.x_filt.filter(x, 1.0)

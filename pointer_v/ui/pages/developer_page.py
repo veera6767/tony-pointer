@@ -332,8 +332,9 @@ class DeveloperPage(QWidget):
             Path(__file__).resolve().parent.parent.parent / "assets" / "models" / "hand_landmarker.task",
         ]
         if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-            candidates.insert(0, Path(sys._MEIPASS) / "pointer_v" / "assets" / "models" / "hand_landmarker.task")
-            candidates.insert(0, Path(sys._MEIPASS) / "assets" / "models" / "hand_landmarker.task")
+            meipass = getattr(sys, "_MEIPASS", "")
+            candidates.insert(0, Path(meipass) / "pointer_v" / "assets" / "models" / "hand_landmarker.task")
+            candidates.insert(0, Path(meipass) / "assets" / "models" / "hand_landmarker.task")
         appdata = os.environ.get("APPDATA")
         if appdata:
             candidates.append(Path(appdata) / APPDATA_DIR_NAME / "models" / "hand_landmarker.task")

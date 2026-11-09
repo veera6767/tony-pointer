@@ -52,7 +52,7 @@ class AboutPage(QWidget):
         if not logo_path.exists():
             logo_path = Path(__file__).resolve().parent.parent.parent / "assets" / "icons" / "pointer_v_32.png"
         if logo_path.exists():
-            pix = QPixmap(str(logo_path)).scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pix = QPixmap(str(logo_path)).scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             logo_lbl.setPixmap(pix)
         header_row.addWidget(logo_lbl)
 

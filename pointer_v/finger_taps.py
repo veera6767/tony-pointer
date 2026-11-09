@@ -132,10 +132,11 @@ class FingerTapDetector:
             # Hold-to-Repeat Trigger (e.g. holding Backspace or Arrows)
             is_curled = curr_ang < 120.0
             if is_curled:
-                if self.curl_hold_start[f_name] is None:
+                hold_start = self.curl_hold_start[f_name]
+                if hold_start is None:
                     self.curl_hold_start[f_name] = now
                 else:
-                    hold_duration = now - self.curl_hold_start[f_name]
+                    hold_duration = now - hold_start
                     repeat_delay = self.settings.keyboard.key_repeat_delay_s
                     repeat_interval = self.settings.keyboard.key_repeat_interval_s
 

@@ -25,11 +25,11 @@ class CameraPreviewOverlay(QWidget):
         self.fps_display: float = 0.0
 
         self.setWindowFlags(
-            Qt.WindowStaysOnTopHint
-            | Qt.FramelessWindowHint
-            | Qt.SubWindow
+            Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.SubWindow
         )
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setWindowOpacity(self.settings.overlay.preview_opacity)
 
         w = self.settings.overlay.preview_width
@@ -41,7 +41,7 @@ class CameraPreviewOverlay(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.display_label = QLabel(self)
-        self.display_label.setAlignment(Qt.AlignCenter)
+        self.display_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.display_label.setStyleSheet("background-color: transparent;")
         layout.addWidget(self.display_label)
 
@@ -68,12 +68,12 @@ class CameraPreviewOverlay(QWidget):
         self.move(default_x, default_y)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
 
     def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.LeftButton:
+        if event.buttons() == Qt.MouseButton.LeftButton:
             new_pos = event.globalPosition().toPoint() - self.drag_position
             self.move(new_pos)
             self.settings.overlay.preview_pos_x = new_pos.x()
@@ -86,9 +86,9 @@ class CameraPreviewOverlay(QWidget):
         target_h = max(70, self.height())
 
         final_pix = QPixmap(target_w, target_h)
-        final_pix.fill(Qt.transparent)
+        final_pix.fill(Qt.GlobalColor.transparent)
         painter = QPainter(final_pix)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         from PySide6.QtGui import QPainterPath
         path = QPainterPath()
@@ -104,10 +104,10 @@ class CameraPreviewOverlay(QWidget):
 
             painter.setPen(QColor("#F0506E"))
             painter.setFont(get_mono_font(10, bold=True))
-            painter.drawText(0, target_h // 2 - 8, target_w, 20, Qt.AlignCenter, "⚠ Camera Offline")
+            painter.drawText(0, target_h // 2 - 8, target_w, 20, Qt.AlignmentFlag.AlignCenter, "⚠ Camera Offline")
             painter.setPen(QColor(TEXT_PRIMARY))
             painter.setFont(get_mono_font(8))
-            painter.drawText(0, target_h // 2 + 10, target_w, 16, Qt.AlignCenter, "Retrying every 2s...")
+            painter.drawText(0, target_h // 2 + 10, target_w, 16, Qt.AlignmentFlag.AlignCenter, "Retrying every 2s...")
             painter.end()
             self.display_label.setPixmap(final_pix)
             return
@@ -116,16 +116,16 @@ class CameraPreviewOverlay(QWidget):
         h, w, ch = frame_bgr.shape
         bytes_per_line = ch * w
         rgb_frame = frame_bgr[:, :, ::-1].copy()
-        q_img = QImage(rgb_frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
+        q_img = QImage(rgb_frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
 
         pix = QPixmap.fromImage(q_img).scaled(
-            target_w, target_h, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
+            target_w, target_h, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation
         )
         painter.drawPixmap(0, 0, pix)
 
         # 1px border
         painter.setPen(QPen(QColor(BORDER), 1.0))
-        painter.setBrush(Qt.NoBrush)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRoundedRect(0, 0, target_w - 1, target_h - 1, RADIUS_PANEL, RADIUS_PANEL)
 
         # Corner brackets (40% blue, 1px)
@@ -152,7 +152,7 @@ class CameraPreviewOverlay(QWidget):
             ry = int(ar.y_min * target_h)
             rw = int((ar.x_max - ar.x_min) * target_w)
             rh = int((ar.y_max - ar.y_min) * target_h)
-            ar_pen = QPen(QColor(34, 211, 238, 90), 1.0, Qt.DashLine)
+            ar_pen = QPen(QColor(34, 211, 238, 90), 1.0, Qt.PenStyle.DashLine)
             painter.setPen(ar_pen)
             painter.drawRect(rx, ry, rw, rh)
 
@@ -171,12 +171,12 @@ class CameraPreviewOverlay(QWidget):
                 bg_col = QColor(35, 42, 54, 210)   # Neutral dark
 
             sw = max(70, len(status_text) * 6 + 12)
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(bg_col)
             painter.drawRoundedRect(6, 6, sw, 16, 3, 3)
 
             painter.setPen(QColor("#FFFFFF"))
-            painter.drawText(6, 6, sw, 16, Qt.AlignCenter, status_text[:28])
+            painter.drawText(6, 6, sw, 16, Qt.AlignmentFlag.AlignCenter, status_text[:28])
 
         # Small FPS chip at bottom right
         if self.fps_display > 0:

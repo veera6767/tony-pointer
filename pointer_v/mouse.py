@@ -10,7 +10,7 @@ from ctypes import wintypes
 import math
 import sys
 import time
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 # Win32 Constants
 INPUT_MOUSE = 0
@@ -96,7 +96,7 @@ class MONITORINFO(ctypes.Structure):
 class MouseController:
     """High-performance Win32 SendInput Mouse Controller with multi-monitor support."""
 
-    def __init__(self, send_hook: Optional[callable] = None):
+    def __init__(self, send_hook: Optional[Callable] = None):
         self.is_windows = sys.platform.startswith("win")
         self.is_left_down = False
         self.left_down_time: float = 0.0
@@ -120,6 +120,9 @@ class MouseController:
 
     def _enable_dpi_v2(self):
         """Enables Per-Monitor DPI Awareness V2 for pixel-perfect multi-monitor accuracy."""
+        if not self.user32:
+            return
+
         try:
             DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = ctypes.c_void_p(-4)
             self.user32.SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
@@ -147,6 +150,8 @@ class MouseController:
         monitors = []
 
         def _enum_callback(hmonitor, hdc, lprect, lparam):
+            if not self.user32:
+                return True
             mi = MONITORINFO()
             mi.cbSize = ctypes.sizeof(MONITORINFO)
             if self.user32.GetMonitorInfoW(hmonitor, ctypes.byref(mi)):
@@ -432,7 +437,8 @@ class MouseController:
                 return False
 
             # Never treat explorer or Pointer V windows as game mode
-            proc_name = self.get_active_process_name().lower()
+            raw_proc = self.get_active_process_name()
+            proc_name = raw_proc.lower() if raw_proc else ""
             if proc_name in ("explorer.exe", "pointerv.exe", "python.exe", "taskmgr.exe", "desktop"):
                 return False
 

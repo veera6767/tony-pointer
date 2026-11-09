@@ -99,7 +99,7 @@ class CameraStream:
 
         try:
             self.cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
-            if not self.cap.isOpened():
+            if self.cap is None or not self.cap.isOpened():
                 self.cap = cv2.VideoCapture(self.camera_index)
         except Exception as e:
             self.error_message = f"Failed to open camera #{self.camera_index}: {e}"
@@ -130,7 +130,7 @@ class CameraStream:
             if self.cap is None or not self.cap.isOpened():
                 self.reconnecting = True
                 success = self._open_device()
-                if not success:
+                if not success or self.cap is None:
                     time.sleep(2.0)
                     continue
 

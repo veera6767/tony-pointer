@@ -14,4 +14,8 @@ __pycache__/
 .pytest_cache/
 pointer_v/_backups/
 share/*.exe
+.venv/
+venv/
+.ruff_cache/
+
 

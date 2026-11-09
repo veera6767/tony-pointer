@@ -25,7 +25,7 @@ class ToggleSwitch(QWidget):
         super().__init__(parent)
         self.setFixedSize(44, 24)
         self._checked = checked
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def isChecked(self) -> bool:
         return self._checked
@@ -37,13 +37,13 @@ class ToggleSwitch(QWidget):
             self.toggled.emit(self._checked)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.setChecked(not self._checked)
             event.accept()
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         # Track background
         bg_color = QColor(BLUE) if self._checked else QColor(BORDER_STRONG)
@@ -58,7 +58,7 @@ class ToggleSwitch(QWidget):
         thumb_x = 22.0 if self._checked else 2.0
         thumb_rect = QRectF(thumb_x, 2, 20, 20)
         painter.setBrush(QColor(255, 255, 255))
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(thumb_rect)
 
 
@@ -92,7 +92,7 @@ class ModeChip(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         if not self.is_active:
             color = QColor(TEXT_DISABLED)
@@ -124,7 +124,7 @@ class ModeChip(QWidget):
         # Text
         painter.setFont(get_ui_font(10, bold=True))
         painter.setPen(color)
-        painter.drawText(self.rect(), Qt.AlignCenter, text)
+        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, text)
 
 
 class CustomTitleBar(QWidget):
@@ -148,7 +148,7 @@ class CustomTitleBar(QWidget):
         from pathlib import Path
         icon_path = Path(__file__).resolve().parent.parent / "assets" / "icons" / "pointer_v_32.png"
         if icon_path.exists():
-            pix = QPixmap(str(icon_path)).scaled(20, 20, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pix = QPixmap(str(icon_path)).scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             self.icon_label.setPixmap(pix)
         layout.addWidget(self.icon_label)
 
@@ -202,12 +202,12 @@ class CustomTitleBar(QWidget):
         layout.addWidget(self.btn_close)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.drag_start = event.globalPosition().toPoint()
             event.accept()
 
     def mouseMoveEvent(self, event):
-        if self.drag_start and event.buttons() == Qt.LeftButton:
+        if self.drag_start and event.buttons() == Qt.MouseButton.LeftButton:
             delta = event.globalPosition().toPoint() - self.drag_start
             self.window().move(self.window().pos() + delta)
             self.drag_start = event.globalPosition().toPoint()
@@ -220,13 +220,13 @@ class CustomTitleBar(QWidget):
 def create_sidebar_icon(name: str, color_hex: str = TEXT_SECONDARY) -> QIcon:
     """Generates crisp 18x18 Lucide-style vector line QIcon for sidebar navigation."""
     pix = QPixmap(36, 36)
-    pix.fill(Qt.transparent)
+    pix.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pix)
-    painter.setRenderHint(QPainter.Antialiasing, True)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
-    pen = QPen(QColor(color_hex), 2.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+    pen = QPen(QColor(color_hex), 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
     painter.setPen(pen)
-    painter.setBrush(Qt.NoBrush)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
 
     if name == "Dashboard":
         # 2x2 grid squares
@@ -338,9 +338,9 @@ class SidebarRail(QFrame):
         self.setObjectName("PanelFrame")
         self.setStyleSheet(f"background-color: {BG1_PANELS}; border-right: 1px solid {BORDER};")
 
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(6, 12, 6, 12)
-        self.layout.setSpacing(6)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(6, 12, 6, 12)
+        self.main_layout.setSpacing(6)
 
         # Hamburger toggle button
         self.toggle_btn = QPushButton("≡")
@@ -359,9 +359,9 @@ class SidebarRail(QFrame):
             }}
         """)
         self.toggle_btn.clicked.connect(self._toggle_expand)
-        self.layout.addWidget(self.toggle_btn)
+        self.main_layout.addWidget(self.toggle_btn)
 
-        self.layout.addSpacing(8)
+        self.main_layout.addSpacing(8)
 
         # Navigation items with dedicated vector line icons
         self.nav_items = [
@@ -379,22 +379,22 @@ class SidebarRail(QFrame):
             btn = QPushButton()
             btn.setFixedHeight(40)
             btn.setIconSize(QSize(18, 18))
-            btn.setCursor(Qt.PointingHandCursor)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(lambda _, i=idx: self._on_btn_click(i))
             self.buttons.append((btn, label))
-            self.layout.addWidget(btn)
+            self.main_layout.addWidget(btn)
 
-        self.layout.addStretch()
+        self.main_layout.addStretch()
 
         # Hidden developer page button
         self.dev_btn = QPushButton()
         self.dev_btn.setFixedHeight(38)
         self.dev_btn.setIconSize(QSize(18, 18))
         self.dev_btn.setIcon(create_sidebar_icon("Developer", TEXT_SECONDARY))
-        self.dev_btn.setCursor(Qt.PointingHandCursor)
+        self.dev_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.dev_btn.setVisible(False)
         self.dev_btn.clicked.connect(lambda: self._on_btn_click(len(self.nav_items)))
-        self.layout.addWidget(self.dev_btn)
+        self.main_layout.addWidget(self.dev_btn)
 
         self._refresh_styles()
 

@@ -98,7 +98,7 @@ class HandTracker:
         # 1. Check local assets / PyInstaller frozen bundle (_MEIPASS)
         candidate_paths = []
         if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-            meipass_dir = Path(sys._MEIPASS)
+            meipass_dir = Path(getattr(sys, "_MEIPASS", ""))
             candidate_paths.extend([
                 meipass_dir / "pointer_v" / "assets" / "models" / "hand_landmarker.task",
                 meipass_dir / "assets" / "models" / "hand_landmarker.task",

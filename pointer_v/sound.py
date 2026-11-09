@@ -19,7 +19,7 @@ class SoundManager:
 
     def __init__(self, settings):
         self.settings = settings
-        base = Path(sys._MEIPASS) if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS") else Path(__file__).resolve().parent
+        base = Path(getattr(sys, "_MEIPASS", "")) if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS") else Path(__file__).resolve().parent
         if (base / "pointer_v" / "assets" / "sounds").exists():
             self.sounds_dir = base / "pointer_v" / "assets" / "sounds"
         elif (base / "assets" / "sounds").exists():

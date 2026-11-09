@@ -68,8 +68,8 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(get_global_stylesheet())
 
         # Frameless window with custom title bar
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
-        self.setAttribute(Qt.WA_TranslucentBackground, False)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
 
         self.setMinimumSize(1000, 640)
         self._restore_geometry()
@@ -102,7 +102,7 @@ class MainWindow(QMainWindow):
         # 1.1 Camera Disconnect Reconnect Warning Banner
         self.camera_banner = QLabel("⚠ Camera disconnected or unavailable. Retrying every 2 seconds... (Auto-resumes on replug)")
         self.camera_banner.setFixedHeight(28)
-        self.camera_banner.setAlignment(Qt.AlignCenter)
+        self.camera_banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.camera_banner.setStyleSheet("background-color: #2D1515; color: #F0506E; border-bottom: 1px solid rgba(240, 80, 110, 0.4); font-size: 11px; font-weight: 600;")
         self.camera_banner.hide()
         root_layout.addWidget(self.camera_banner)

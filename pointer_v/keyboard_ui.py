@@ -51,13 +51,13 @@ class FloatingAirKeyboardWidget(QWidget):
         self.layout_manager = layout_manager
 
         self.setWindowFlags(
-            Qt.WindowStaysOnTopHint
-            | Qt.FramelessWindowHint
-            | Qt.Tool
-            | Qt.WindowDoesNotAcceptFocus
+            Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Tool
+            | Qt.WindowType.WindowDoesNotAcceptFocus
         )
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
 
         # Dynamic state
         self.active_zone = Zone.MAIN
@@ -108,7 +108,7 @@ class FloatingAirKeyboardWidget(QWidget):
         # Listen to screen topology updates
         from PySide6.QtGui import QGuiApplication
         app = QGuiApplication.instance()
-        if app:
+        if isinstance(app, QGuiApplication):
             app.screenAdded.connect(lambda _: self._reposition_to_corner())
             app.screenRemoved.connect(lambda _: self._reposition_to_corner())
             app.primaryScreenChanged.connect(lambda _: self._reposition_to_corner())
@@ -158,9 +158,9 @@ class FloatingAirKeyboardWidget(QWidget):
         w = self.width()
         h = self.height()
 
-        if corner_name is None:
-            corner_name = getattr(self.settings.keyboard, "corner", "bottom-right")
-        corner_name = corner_name.lower()
+        if not corner_name:
+            corner_name = getattr(self.settings.keyboard, "corner", "bottom-right") or "bottom-right"
+        corner_name = str(corner_name).lower()
 
         # Dodge active window if setting enabled
         if getattr(self.settings.keyboard, "avoid_active_window", True) and sys.platform.startswith("win"):
@@ -209,7 +209,7 @@ class FloatingAirKeyboardWidget(QWidget):
             self._reposition_to_corner()
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             # Check if clicked in header strip drag area (top 34 px)
             if event.position().y() <= 34:
                 self.is_dragging = True
@@ -217,7 +217,7 @@ class FloatingAirKeyboardWidget(QWidget):
                 event.accept()
 
     def mouseMoveEvent(self, event):
-        if self.is_dragging and event.buttons() == Qt.LeftButton:
+        if self.is_dragging and event.buttons() == Qt.MouseButton.LeftButton:
             new_pos = event.globalPosition().toPoint() - self.drag_position
             self.move(new_pos)
             event.accept()
@@ -380,7 +380,7 @@ class FloatingAirKeyboardWidget(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         w = self.width()
         h = self.height()
@@ -434,7 +434,7 @@ class FloatingAirKeyboardWidget(QWidget):
         painter.setFont(get_ui_font(9, bold=True))
         painter.setPen(QColor(TEXT_DISABLED))
         handle_rect = QRectF(0, 4, self.width(), 16)
-        painter.drawText(handle_rect, Qt.AlignCenter, "⋮⋮ Pointer V Air Keyboard")
+        painter.drawText(handle_rect, Qt.AlignmentFlag.AlignCenter, "⋮⋮ Pointer V Air Keyboard")
 
         # Header Info Chip: Zone and Row
         painter.setFont(get_ui_font(10, bold=True))
@@ -477,7 +477,7 @@ class FloatingAirKeyboardWidget(QWidget):
             painter.drawRoundedRect(rect, 4, 4)
             painter.setFont(get_ui_font(9, bold=True))
             painter.setPen(fg)
-            painter.drawText(rect, Qt.AlignCenter, label)
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
             mod_x += 52
 
     def _paint_divider(self, painter: QPainter, div_x: float, start_y: float):
@@ -550,7 +550,7 @@ class FloatingAirKeyboardWidget(QWidget):
                 else:
                     painter.setPen(QColor(TEXT_SECONDARY))
 
-                painter.drawText(rect, Qt.AlignCenter, key.display)
+                painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, key.display)
                 curr_x += kw + self.key_gap
 
             curr_y += self.key_size + self.key_gap

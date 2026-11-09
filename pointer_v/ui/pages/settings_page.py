@@ -372,7 +372,7 @@ class SettingsPage(QWidget):
         self.chk_mute.toggled.connect(self._save)
         form.addRow("Mute:", self.chk_mute)
 
-        self.slider_volume = QSlider(Qt.Horizontal)
+        self.slider_volume = QSlider(Qt.Orientation.Horizontal)
         self.slider_volume.setRange(0, 100)
         self.slider_volume.setValue(self.settings.sound.volume)
         self.slider_volume.valueChanged.connect(self._save)

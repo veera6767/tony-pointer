@@ -66,7 +66,7 @@ RADIUS_WINDOW = 10
 def init_fonts():
     """Loads bundled Inter and JetBrains Mono fonts into QFontDatabase."""
     import sys
-    base = Path(sys._MEIPASS) if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS") else Path(__file__).resolve().parent
+    base = Path(getattr(sys, "_MEIPASS", "")) if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS") else Path(__file__).resolve().parent
     candidates = [
         base / "pointer_v" / "assets" / "fonts",
         base / "assets" / "fonts",
@@ -85,7 +85,7 @@ def init_fonts():
 def get_ui_font(size: int = SIZE_BODY, bold: bool = False, weight: int = 500) -> QFont:
     """Returns the standard application typography font."""
     font = QFont(FONT_UI, size)
-    font.setStyleHint(QFont.SansSerif)
+    font.setStyleHint(QFont.StyleHint.SansSerif)
     font.setWeight(QFont.Weight(weight if not bold else 600))
     return font
 
@@ -93,8 +93,8 @@ def get_ui_font(size: int = SIZE_BODY, bold: bool = False, weight: int = 500) ->
 def get_mono_font(size: int = SIZE_BODY, bold: bool = False) -> QFont:
     """Returns the JetBrains Mono font strictly for numbers, metrics, and timestamps."""
     font = QFont(FONT_MONO, size)
-    font.setStyleHint(QFont.Monospace)
-    font.setWeight(QFont.DemiBold if bold else QFont.Normal)
+    font.setStyleHint(QFont.StyleHint.Monospace)
+    font.setWeight(QFont.Weight.DemiBold if bold else QFont.Weight.Normal)
     return font
 
 

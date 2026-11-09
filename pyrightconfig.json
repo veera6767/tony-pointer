@@ -1,0 +1,22 @@
+{
+  "extraPaths": [
+    "pointer_v",
+    "C:/Users/Veera Akash/AppData/Local/Programs/Python/Python312/Lib/site-packages"
+  ],
+  "include": [
+    "pointer_v",
+    "scripts",
+    "tests"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "pointer_v/dist",
+    "pointer_v/build",
+    ".venv"
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false,
+  "reportAttributeAccessIssue": "warning"
+}

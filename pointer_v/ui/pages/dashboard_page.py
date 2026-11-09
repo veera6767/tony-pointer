@@ -106,7 +106,7 @@ class DashboardPage(QWidget):
         # Top Warning Banner for Model Failure
         self.model_banner = QLabel("⚠ Hand Landmarker model failed to load. Check assets/models/hand_landmarker.task.")
         self.model_banner.setFixedHeight(30)
-        self.model_banner.setAlignment(Qt.AlignCenter)
+        self.model_banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.model_banner.setStyleSheet(f"background-color: #2D1515; color: {RED}; border: 1px solid rgba(240, 80, 110, 0.4); border-radius: {RADIUS_CONTROL}px; font-size: 11px; font-weight: 600; padding: 4px;")
         self.model_banner.hide()
         layout.addWidget(self.model_banner)
@@ -156,7 +156,7 @@ class DashboardPage(QWidget):
         self.video_label = QLabel()
         self.video_label.setFixedSize(400, 240)
         self.video_label.setStyleSheet(f"background-color: {BG2_CARDS}; border: 1px solid {BORDER_STRONG}; border-radius: {RADIUS_CONTROL}px;")
-        self.video_label.setAlignment(Qt.AlignCenter)
+        self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         cam_layout.addWidget(self.video_label)
         grid.addWidget(cam_card, 0, 0)
 
@@ -336,10 +336,10 @@ class DashboardPage(QWidget):
         if frame_bgr is not None:
             h, w, ch = frame_bgr.shape
             rgb = frame_bgr[:, :, ::-1].copy()
-            q_img = QImage(rgb.data, w, h, ch * w, QImage.Format_RGB888)
+            q_img = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
             pix = QPixmap.fromImage(q_img).scaled(
                 self.video_label.width(), self.video_label.height(),
-                Qt.KeepAspectRatio, Qt.SmoothTransformation
+                Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
             )
             self.video_label.setPixmap(pix)
 
