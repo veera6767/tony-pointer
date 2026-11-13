@@ -135,10 +135,11 @@ SHIFT_SYMBOL_MAP: Dict[str, str] = {
 class Win32KeyboardOutput:
     """Manages real OS keystroke emission and single-handed sticky modifier tracking."""
 
-    def __init__(self, send_hook: Optional[Callable] = None):
+    def __init__(self, send_hook: Optional[Callable] = None, safe_sink: bool = False):
         self.is_windows = sys.platform.startswith("win")
         self.user32 = ctypes.windll.user32 if self.is_windows else None
         self.send_hook = send_hook  # Optional mock injection for unit tests
+        self.safe_sink = safe_sink
 
         # Sticky Modifiers: "shift", "ctrl", "alt", "win", "caps"
         self.modifiers: Dict[str, ModifierState] = {
@@ -178,6 +179,11 @@ class Win32KeyboardOutput:
 
     def _send_scan(self, scancode: int, is_extended: bool, is_up: bool):
         self.last_event_kind = "SCAN_UP" if is_up else "SCAN_DOWN"
+        if self.safe_sink:
+            self.last_sendinput_ret = 1
+            self.last_sendinput_err = 0
+            return
+
         if self.send_hook:
             self.send_hook("scan", scancode, is_extended, is_up)
             return
@@ -209,6 +215,11 @@ class Win32KeyboardOutput:
     def _send_unicode(self, char: str):
         """Sends exact unicode character directly via SendInput."""
         self.last_event_kind = "UNICODE"
+        if self.safe_sink:
+            self.last_sendinput_ret = 1
+            self.last_sendinput_err = 0
+            return
+
         if self.send_hook:
             self.send_hook("unicode", char, False, False)
             return

@@ -9,6 +9,8 @@ Clean pro interface:
 - Quick actions: Open Keyboard, Paint Mode, Pause Tracking, Launch Calibration
 """
 
+import time
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
@@ -177,9 +179,12 @@ class DashboardPage(QWidget):
         self.lbl_pose = QLabel("Hand Pose: Searching...")
         self.lbl_gesture = QLabel("Gesture: None")
         self.lbl_keyboard = QLabel("Keyboard: Zone [Main] · Row 4")
+        self.lbl_click_mode = QLabel("Click Mode: Left clicks only")
+        self.lbl_recent_events = QLabel("Recent Events: Listening...")
+        self.lbl_recent_events.setWordWrap(True)
 
-        for lbl in (self.lbl_fps, self.lbl_latency, self.lbl_pose, self.lbl_gesture, self.lbl_keyboard):
-            lbl.setFont(get_mono_font(11))
+        for lbl in (self.lbl_fps, self.lbl_latency, self.lbl_pose, self.lbl_gesture, self.lbl_keyboard, self.lbl_click_mode, self.lbl_recent_events):
+            lbl.setFont(get_mono_font(10))
             lbl.setStyleSheet(f"color: {TEXT_SECONDARY};")
             side_layout.addWidget(lbl)
 
@@ -324,6 +329,18 @@ class DashboardPage(QWidget):
         self.lbl_pose.setText(f"Hand Pose: {pose}")
         self.lbl_gesture.setText(f"Gesture: {status_text}")
         self.lbl_keyboard.setText(f"Keyboard: Zone [{kb_zone}] · Row {kb_row + 1}")
+
+        click_mode = telemetry.get("click_mode", "left_only")
+        cm_text = "Off" if click_mode == "off" else ("Left clicks only" if click_mode == "left_only" else "All")
+        self.lbl_click_mode.setText(f"Click Mode: {cm_text}")
+
+        events = telemetry.get("gesture_events", [])
+        if events:
+            lines = [f"{e.get('time', '')} {e.get('action', '')} ({e.get('pose', '')})" for e in events[-2:]]
+            self.lbl_recent_events.setText("Recent: " + " | ".join(lines))
+        else:
+            self.lbl_recent_events.setText("Recent: Listening...")
+
         self.mode_chip.set_status(mode, is_paused)
 
         # Privacy: Hide last typed strip if requested
@@ -332,14 +349,19 @@ class DashboardPage(QWidget):
         else:
             self.typed_card.setVisible(True)
 
-        # Update thumbnail
-        if frame_bgr is not None:
+        # Update thumbnail (throttled to 10 Hz with fast transformation to protect UI thread)
+        now = time.perf_counter()
+        if not hasattr(self, "_last_thumb_time"):
+            self._last_thumb_time = 0.0
+
+        if frame_bgr is not None and (now - self._last_thumb_time >= 0.10) and self.isVisible():
+            self._last_thumb_time = now
             h, w, ch = frame_bgr.shape
             rgb = frame_bgr[:, :, ::-1].copy()
             q_img = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
             pix = QPixmap.fromImage(q_img).scaled(
                 self.video_label.width(), self.video_label.height(),
-                Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.FastTransformation
             )
             self.video_label.setPixmap(pix)
 

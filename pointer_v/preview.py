@@ -27,9 +27,11 @@ class CameraPreviewOverlay(QWidget):
         self.setWindowFlags(
             Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.SubWindow
+            | Qt.WindowType.Tool
+            | Qt.WindowType.WindowDoesNotAcceptFocus
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setWindowOpacity(self.settings.overlay.preview_opacity)
 
         w = self.settings.overlay.preview_width
@@ -67,6 +69,10 @@ class CameraPreviewOverlay(QWidget):
 
         self.move(default_x, default_y)
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._restore_position(self.width(), self.height())
+
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
@@ -82,6 +88,16 @@ class CameraPreviewOverlay(QWidget):
 
     def update_frame(self, frame_bgr, fps: float = 0.0):
         """Converts BGR OpenCV frame to QPixmap and paints preview overlay."""
+        if not self.isVisible():
+            return
+        import time
+        t0 = time.perf_counter()
+        if not hasattr(self, "_last_render_time"):
+            self._last_render_time = 0.0
+        if t0 - self._last_render_time < 0.066:  # Max 15 FPS rendering to UI
+            return
+        self._last_render_time = t0
+
         target_w = max(100, self.width())
         target_h = max(70, self.height())
 
@@ -119,7 +135,7 @@ class CameraPreviewOverlay(QWidget):
         q_img = QImage(rgb_frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
 
         pix = QPixmap.fromImage(q_img).scaled(
-            target_w, target_h, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation
+            target_w, target_h, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.FastTransformation
         )
         painter.drawPixmap(0, 0, pix)
 
@@ -187,6 +203,9 @@ class CameraPreviewOverlay(QWidget):
 
         painter.end()
         self.display_label.setPixmap(final_pix)
+
+        from instrumentation import record_paint_timing
+        record_paint_timing("preview_ms", (time.perf_counter() - t0) * 1000.0)
 
     def set_status_text(self, text: str):
         self.status_text = text

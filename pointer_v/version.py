@@ -3,7 +3,7 @@ Pointer V - Application Version & Metadata
 Single source of truth for version numbering and product information.
 """
 
-__version__ = "2.0.1"
+__version__ = "2.0.3"
 APP_NAME = "Pointer V"
 APP_SHORT_NAME = "PV"
 APP_TAGLINE = "Control your PC in the air with one hand."

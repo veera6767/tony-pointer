@@ -8,6 +8,7 @@ WS_EX_NOACTIVATE & WS_EX_TOOLWINDOW flags to guarantee focus is never stolen fro
 import ctypes
 import math
 import sys
+import time
 from typing import Dict, List, Optional, Set
 
 from PySide6.QtCore import QPoint, QRectF, Qt, QTimer
@@ -273,7 +274,17 @@ class FloatingAirKeyboardWidget(QWidget):
         self.is_animating = True
         self.anim_progress = 0.0
         self.show()
-        apply_noactivate_style(int(self.winId()))
+        try:
+            apply_noactivate_style(int(self.winId()))
+        except Exception as e:
+            print(f"[KeyboardHUD] Note: {e}")
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        try:
+            apply_noactivate_style(int(self.winId()))
+        except Exception:
+            pass
 
     def animate_hide(self):
         """Slides and fades out over ~150 ms."""
@@ -379,6 +390,7 @@ class FloatingAirKeyboardWidget(QWidget):
         self.update()
 
     def paintEvent(self, event):
+        t0 = time.perf_counter()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
@@ -428,6 +440,9 @@ class FloatingAirKeyboardWidget(QWidget):
                 opacity=symbols_opacity,
                 accent_color=QColor(VIOLET)
             )
+
+        from instrumentation import record_paint_timing
+        record_paint_timing("keyboard_ms", (time.perf_counter() - t0) * 1000.0)
 
     def _paint_header(self, painter: QPainter):
         # Center Drag Handle & Title

@@ -54,7 +54,7 @@ class PaintModeSettings:
 
 @dataclass
 class GestureSettings:
-    double_tap_window_ms: float = 500.0   # Window for two taps to register as double-click
+    double_tap_window_ms: float = 320.0   # Window for two taps to register as double-click (tuned 320ms)
     tap_curl_threshold: float = 0.045     # Forward flexion depth/angle change for air tap
     tap_cooldown_ms: float = 220.0        # Anti-repeat cooldown
     neighbor_lockout_ms: float = 160.0    # Lockout across all fingers when any finger taps
@@ -79,6 +79,9 @@ class GestureSettings:
     game_mode_exclusions: List[str] = field(
         default_factory=lambda: ["steam.exe", "epicgames.exe"]
     )
+    finger_curl_thresholds: Dict[str, float] = field(
+        default_factory=lambda: {"index": 0.045, "middle": 0.045, "ring": 0.055, "pinky": 0.060, "thumb": 0.040}
+    )
 
 
 @dataclass
@@ -88,6 +91,7 @@ class OverlaySettings:
     cursor_size: float = 1.0             # Scale 0.75x to 2.0x
     cursor_trail: bool = True            # 8-point fading comet trail
     cursor_glow: bool = True             # Soft ambient blue glow
+    lite_cursor: bool = False            # True turns off glow and trail for max performance
     hide_system_cursor: bool = False     # Hide standard Windows arrow while active
     brush_lock_color: str = "#F0506E"    # Red brush locked
     preview_width: int = 320
@@ -113,7 +117,8 @@ class KeyboardSettings:
     snap_to_corner: bool = True          # Snap to nearest corner when released after drag
     avoid_active_window: bool = True     # Best-effort dodge if foreground window overlaps
     keep_visible_dimmed: bool = False    # Dim instead of hiding when closing keyboard
-    open_palm_hold_s: float = 0.50       # Hold open palm for ~0.5s to open keyboard
+    open_palm_hold_s: float = 0.80       # Hold open palm for ~0.8s to open keyboard
+    open_palm_enabled: bool = True       # Toggle open palm gesture to open air keyboard
     fist_close_hold_s: float = 0.50      # Hold fist for ~0.5s to close keyboard
     swipe_threshold: float = 0.32        # Normalized by hand size
     swipe_cooldown_ms: float = 300.0     # Cooldown between row/window jumps
@@ -158,7 +163,7 @@ class MultiMonitorSettings:
 
 @dataclass
 class AppConfig:
-    version: str = "2.0.0"
+    version: str = "2.0.3"
     camera_index: int = 0
     camera_name: str = ""
     camera_width: int = 1280
@@ -181,6 +186,7 @@ class AppConfig:
     hotkey_pause: str = "ctrl+alt+space"
     start_minimized: bool = False
     close_to_tray: bool = False          # False = X button quits app; True = minimizes to tray
+    keep_running_in_tray_when_minimized: bool = True  # True = minimizing main window keeps overlays & tracking active
     tutorial_completed: bool = False
     show_tutorial_on_startup: bool = True
     developer_mode_enabled: bool = False
@@ -308,6 +314,7 @@ class SettingsManager:
                 hotkey_pause=merged_dict.get("hotkey_pause", "ctrl+alt+space"),
                 start_minimized=merged_dict.get("start_minimized", False),
                 close_to_tray=merged_dict.get("close_to_tray", False),
+                keep_running_in_tray_when_minimized=merged_dict.get("keep_running_in_tray_when_minimized", True),
                 tutorial_completed=merged_dict.get("tutorial_completed", False),
                 show_tutorial_on_startup=merged_dict.get("show_tutorial_on_startup", True),
                 developer_mode_enabled=merged_dict.get("developer_mode_enabled", False),

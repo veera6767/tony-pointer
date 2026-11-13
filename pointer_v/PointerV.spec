@@ -25,6 +25,9 @@ a = Analysis(
     binaries=[],
     datas=mediapipe_datas + extra_datas,
     hiddenimports=[
+        'hotkeys',
+        'instrumentation',
+        'scenario_generator',
         'keyboard',
         'psutil',
         'cv2',

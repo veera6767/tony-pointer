@@ -83,10 +83,13 @@ class CameraStream:
         self.reconnecting: bool = False
 
     def start(self) -> bool:
-        """Initializes camera capture and launches reader thread."""
-        self.running = True
-        self.thread = threading.Thread(target=self._capture_worker, daemon=True)
-        self.thread.start()
+        """Initializes camera capture and launches reader thread if not already running."""
+        with self.lock:
+            if self.running and self.thread and self.thread.is_alive():
+                return True
+            self.running = True
+            self.thread = threading.Thread(target=self._capture_worker, daemon=True)
+            self.thread.start()
         return True
 
     def _open_device(self) -> bool:
@@ -111,6 +114,10 @@ class CameraStream:
             self.is_connected = False
             return False
 
+        try:
+            self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        except Exception:
+            pass
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.requested_width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.requested_height)
         self.cap.set(cv2.CAP_PROP_FPS, self.target_fps)
@@ -199,15 +206,21 @@ class CameraStream:
                 pass
 
     def stop(self):
+        """Releases the camera device and stops background worker thread immediately."""
         self.running = False
-        if self.thread and self.thread.is_alive():
-            self.thread.join(timeout=1.0)
+        t = self.thread
+        if t and t.is_alive() and t != threading.current_thread():
+            t.join(timeout=1.0)
+        self.thread = None
         if self.cap:
             try:
                 self.cap.release()
             except Exception:
                 pass
             self.cap = None
+        with self.lock:
+            self.latest_frame = None
+        self.is_connected = False
 
 
 def draw_hud_landmarks(

@@ -5,6 +5,7 @@ central stacked page deck (Dashboard, Camera, Gestures, Keyboard, Practice, Sett
 Calibration, About, Developer), and bottom telemetry status bar.
 """
 
+import os
 from typing import Callable
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -43,6 +44,9 @@ class MainWindow(QMainWindow):
     restart_admin_requested = Signal()
     app_quit_requested = Signal()
     test_cursor_requested = Signal()
+    inject_gesture_requested = Signal(str)
+    calibration_active_changed = Signal(bool)
+    camera_needed = Signal(bool)
 
     def __init__(
         self,
@@ -77,6 +81,7 @@ class MainWindow(QMainWindow):
         self._build_ui()
 
         # Telemetry refresh timer
+        self.hotkey_manager = None
         self.telemetry_timer = QTimer(self)
         self.telemetry_timer.timeout.connect(self._refresh_telemetry)
         self.telemetry_timer.start(33)
@@ -173,6 +178,7 @@ class MainWindow(QMainWindow):
         )
         self.page_dev.test_keyboard_requested.connect(self.toggle_keyboard_requested.emit)
         self.page_dev.test_cursor_requested.connect(self.test_cursor_requested.emit)
+        self.page_dev.inject_gesture_requested.connect(self.inject_gesture_requested.emit)
         self.deck.addWidget(self.page_dev)
 
         body_layout.addWidget(self.deck, stretch=1)
@@ -185,6 +191,8 @@ class MainWindow(QMainWindow):
         self._update_developer_mode_visibility()
 
     def _show_first_run_tutorial(self):
+        if not self.isVisible() or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+            return
         dlg = TutorialDialog(self.settings, self.get_status, self)
         dlg.exec()
         self.settings_manager.save()
@@ -197,6 +205,8 @@ class MainWindow(QMainWindow):
 
     def _on_page_selected(self, index: int):
         self.deck.setCurrentIndex(index)
+        self.calibration_active_changed.emit(index == 6)
+        self.camera_needed.emit(index in (1, 6))
 
     def _on_calibration_done(self):
         self.settings_manager.save()
@@ -216,6 +226,8 @@ class MainWindow(QMainWindow):
         self.page_dash.power_toggle.setChecked(active)
 
     def _refresh_telemetry(self):
+        if not self.isVisible():
+            return
         telem = self.get_status()
         frame = self.get_frame()
 
@@ -238,7 +250,8 @@ class MainWindow(QMainWindow):
             hand_visible=(raw_hand is not None),
             is_active=is_active
         )
-        self.status_bar.update_telemetry(fps, latency, cam_conn, is_paused)
+        pause_reason = telem.get("pause_reason", "")
+        self.status_bar.update_telemetry(fps, latency, cam_conn, is_paused, pause_reason)
 
         # Show camera disconnect banner if camera is offline
         if not cam_conn:
@@ -299,7 +312,39 @@ class MainWindow(QMainWindow):
         else:
             self.app_quit_requested.emit()
 
+    def changeEvent(self, event):
+        from PySide6.QtCore import QEvent, QTimer
+        if event.type() == QEvent.Type.WindowStateChange:
+            if self.isMinimized() and getattr(self.settings, "keep_running_in_tray_when_minimized", True):
+                QTimer.singleShot(0, self.hide)
+        super().changeEvent(event)
+
+    def nativeEvent(self, event_type, message):
+        """Intercepts Win32 WM_HOTKEY events for responsive zero-hook global shortcuts."""
+        if event_type in (b"windows_generic_MSG", "windows_generic_MSG"):
+            try:
+                import ctypes
+                from ctypes import wintypes
+                class _MSG(ctypes.Structure):
+                    _fields_ = [
+                        ("hwnd", wintypes.HWND),
+                        ("message", wintypes.UINT),
+                        ("wParam", wintypes.WPARAM),
+                        ("lParam", wintypes.LPARAM),
+                        ("time", wintypes.DWORD),
+                        ("pt", wintypes.POINT),
+                    ]
+                msg = _MSG.from_address(int(message))
+                if msg.message == 0x0312:  # WM_HOTKEY
+                    if self.hotkey_manager and self.hotkey_manager.handle_wm_hotkey(int(msg.wParam)):
+                        return True, 0
+            except Exception:
+                pass
+        return super().nativeEvent(event_type, message)
+
     def closeEvent(self, event):
+        if hasattr(self, "telemetry_timer"):
+            self.telemetry_timer.stop()
         pos = self.pos()
         size = self.size()
         self.settings.window_geometry["main"] = [pos.x(), pos.y(), size.width(), size.height()]

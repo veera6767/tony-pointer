@@ -10,3 +10,4 @@ project-excludes = [
     "**/.pytest_cache",
     "**/.venv",
 ]
+

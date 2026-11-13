@@ -1,6 +1,6 @@
 [project]
 name = "pointer-v"
-version = "2.0.1"
+version = "2.0.3"
 description = "Hardware-level hand gesture PC controller with MediaPipe and PySide6"
 requires-python = ">=3.12"
 
@@ -43,3 +43,4 @@ reportMissingTypeStubs = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["pointer_v", "."]
+

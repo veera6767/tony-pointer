@@ -55,6 +55,7 @@ class GestureEngine:
         self.prev_pose = PoseType.UNKNOWN
         self.active_action = GestureAction.NONE
         self.brush_locked = False
+        self.suppress_keyboard_trigger: bool = False
 
         # Air-tap detection variables
         self.index_angle_history: Deque[Tuple[float, float]] = collections.deque(maxlen=15)
@@ -151,8 +152,14 @@ class GestureEngine:
         if pinch_dist < self.settings.gestures.pinch_threshold:
             return PoseType.PINCH
 
-        # Open Palm: all 4 fingers extended
-        if index_extended and middle_extended and ring_extended and pinky_extended:
+        # Thumb extension check
+        thumb_angle = hand.angle_deg(1, 2, 4)
+        dist_wrist_thumb_tip = hand.distance_3d(0, 4)
+        dist_wrist_thumb_ip = hand.distance_3d(0, 3)
+        thumb_extended = (thumb_angle > 120.0) or (dist_wrist_thumb_tip > dist_wrist_thumb_ip * 1.02)
+
+        # Open Palm: all 5 fingers extended
+        if index_extended and middle_extended and ring_extended and pinky_extended and thumb_extended:
             return PoseType.OPEN_PALM
 
         # Fist: all curled
@@ -233,9 +240,15 @@ class GestureEngine:
         angle_delta = max_angle - min_angle
         current_angle = angles[-1]
 
-        # Must dip into real flexion (< 130 deg) and rebound back towards extension (> 140 deg)
-        flexion_occurred = min_angle < 130.0 and angle_delta >= 22.0
-        rebounded = current_angle > (min_angle + 18.0) and current_angle > 140.0
+        # Use pointing_sensitivity to adapt to relaxed finger anatomy
+        sens = max(0.5, min(2.0, getattr(self.settings.gestures, "pointing_sensitivity", 1.0)))
+        req_flex = 130.0 + (sens - 1.0) * 8.0
+        req_delta = max(15.0, 22.0 / sens)
+        req_rebound = max(132.0, 140.0 - (sens - 1.0) * 8.0)
+
+        # Must dip into real flexion and rebound back towards extension
+        flexion_occurred = min_angle < req_flex and angle_delta >= req_delta
+        rebounded = current_angle > (min_angle + 14.0) and current_angle > req_rebound
 
         cooldown_s = max(0.12, self.settings.gestures.tap_cooldown_ms / 1000.0)
         if flexion_occurred and rebounded and (now - self.last_tap_time > cooldown_s):
@@ -376,7 +389,10 @@ class GestureEngine:
         raw_screen_y = vy + int(remapped_y * vh)
 
         # One Euro Filter
-        filt_x, filt_y = filter_2d.filter(raw_screen_x, raw_screen_y, now)
+        if filter_2d is not None:
+            filt_x, filt_y = filter_2d.filter(raw_screen_x, raw_screen_y, now)
+        else:
+            filt_x, filt_y = float(raw_screen_x), float(raw_screen_y)
         screen_x = int(round(filt_x))
         screen_y = int(round(filt_y))
 
@@ -424,6 +440,7 @@ class GestureEngine:
             self.fist_pause_progress = 0.0
 
         # 4. Handle Open Palm: Keyboard Entry
+        open_palm_trigger_enabled = getattr(self.settings.keyboard, "open_palm_enabled", True) and not getattr(self, "suppress_keyboard_trigger", False)
         if pose == PoseType.OPEN_PALM:
             self.last_open_palm_time = now
             self.dwell_start_time = None
@@ -437,12 +454,18 @@ class GestureEngine:
                 result["status_text"] = "BRUSH RELEASED"
                 return result
 
+            if not open_palm_trigger_enabled:
+                self.open_palm_start_time = None
+                self.open_palm_progress = 0.0
+                result["status_text"] = "OPEN PALM (Resting)"
+                return result
+
             if self.open_palm_start_time is None:
                 self.open_palm_start_time = now
                 self.open_palm_progress = 0.0
 
             elapsed = now - self.open_palm_start_time
-            target = self.settings.keyboard.open_palm_hold_s
+            target = getattr(self.settings.keyboard, "open_palm_hold_s", 0.80)
             self.open_palm_progress = min(1.0, elapsed / target)
             result["open_palm_progress"] = self.open_palm_progress
 
@@ -456,9 +479,9 @@ class GestureEngine:
             result["action"] = GestureAction.PAUSE.value
             result["status_text"] = f"HOLD OPEN PALM: KEYBOARD ({int(self.open_palm_progress * 100)}%)"
             return result
-        elif pose == PoseType.UNKNOWN and (now - self.last_open_palm_time < 0.12) and (self.open_palm_start_time is not None):
+        elif pose == PoseType.UNKNOWN and open_palm_trigger_enabled and (now - self.last_open_palm_time < 0.12) and (self.open_palm_start_time is not None):
             elapsed = now - self.open_palm_start_time
-            target = self.settings.keyboard.open_palm_hold_s
+            target = getattr(self.settings.keyboard, "open_palm_hold_s", 0.80)
             self.open_palm_progress = min(1.0, elapsed / target)
             result["open_palm_progress"] = self.open_palm_progress
             result["action"] = GestureAction.PAUSE.value
@@ -566,8 +589,8 @@ class GestureEngine:
                 self.pending_single_tap = False
                 self.tap_frozen_pos = None
 
-            # During the first 150ms after tap, freeze cursor to stabilize click target
-            if (now - self.tap_start_time <= 0.150) and self.tap_frozen_pos:
+            # Freeze cursor during double-tap window to prevent jitter while tapping
+            if (now - self.tap_start_time <= double_tap_window_s) and self.tap_frozen_pos:
                 result["cursor_x"] = self.tap_frozen_pos[0]
                 result["cursor_y"] = self.tap_frozen_pos[1]
 

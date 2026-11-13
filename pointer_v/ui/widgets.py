@@ -4,6 +4,8 @@ Includes ToggleSwitch, ModeChip, CustomTitleBar, SidebarRail, and StatusBarWidge
 Adheres strictly to theme tokens without hardcoded colors.
 """
 
+from typing import Tuple
+
 from PySide6.QtCore import QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
@@ -73,7 +75,31 @@ class ModeChip(QWidget):
         self.hand_visible = True
         self.is_active = False
         self.setFixedHeight(26)
-        self.setMinimumWidth(100)
+        self.setMinimumWidth(130)
+
+    def _get_current_text(self) -> Tuple[str, QColor]:
+        if not self.is_active:
+            return "STANDBY", QColor(TEXT_DISABLED)
+        elif self.is_paused:
+            return "PAUSED", QColor(RED)
+        elif self.is_yielding:
+            return "YIELDING to touchpad", QColor(AMBER)
+        elif not self.hand_visible:
+            return "NO HAND", QColor(TEXT_SECONDARY)
+        elif self.mode == "KEYBOARD":
+            return "KEYBOARD MODE", QColor(BLUE)
+        else:
+            return "OUTPUT ACTIVE", QColor(GREEN)
+
+    def sizeHint(self):
+        text, _ = self._get_current_text()
+        from PySide6.QtGui import QFontMetrics
+        fm = QFontMetrics(get_ui_font(10, bold=True))
+        w = fm.horizontalAdvance(text) + 28
+        return QSize(max(130, w), 26)
+
+    def minimumSizeHint(self):
+        return self.sizeHint()
 
     def set_status(
         self,
@@ -88,30 +114,14 @@ class ModeChip(QWidget):
         self.is_yielding = is_yielding
         self.hand_visible = hand_visible
         self.is_active = is_active
+        self.updateGeometry()
         self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
-        if not self.is_active:
-            color = QColor(TEXT_DISABLED)
-            text = "STANDBY"
-        elif self.is_paused:
-            color = QColor(RED)
-            text = "PAUSED"
-        elif self.is_yielding:
-            color = QColor(AMBER)
-            text = "YIELDING to touchpad"
-        elif not self.hand_visible:
-            color = QColor(TEXT_SECONDARY)
-            text = "NO HAND"
-        elif self.mode == "KEYBOARD":
-            color = QColor(BLUE)
-            text = "KEYBOARD MODE"
-        else:
-            color = QColor(GREEN)
-            text = "OUTPUT ACTIVE"
+        text, color = self._get_current_text()
 
         h = self.height()
 
@@ -508,13 +518,13 @@ class StatusBarWidget(QFrame):
         hints.setStyleSheet(f"color: {TEXT_DISABLED};")
         layout.addWidget(hints)
 
-    def update_telemetry(self, fps: float, latency: float, camera_connected: bool, is_paused: bool):
+    def update_telemetry(self, fps: float, latency: float, camera_connected: bool, is_paused: bool, pause_reason: str = ""):
         self.lbl_fps.setText(f"{fps:.1f} FPS")
         self.lbl_latency.setText(f"{latency:.1f} ms")
 
         if is_paused:
             self.cam_dot.setStyleSheet(f"color: {AMBER}; font-size: 12px;")
-            self.cam_status.setText("Tracking Paused")
+            self.cam_status.setText(f"Tracking Paused ({pause_reason})" if pause_reason else "Tracking Paused")
         elif camera_connected:
             self.cam_dot.setStyleSheet(f"color: {GREEN}; font-size: 12px;")
             self.cam_status.setText("Camera Active")

@@ -96,8 +96,9 @@ class MONITORINFO(ctypes.Structure):
 class MouseController:
     """High-performance Win32 SendInput Mouse Controller with multi-monitor support."""
 
-    def __init__(self, send_hook: Optional[Callable] = None):
+    def __init__(self, send_hook: Optional[Callable] = None, safe_sink: bool = False):
         self.is_windows = sys.platform.startswith("win")
+        self.safe_sink = safe_sink
         self.is_left_down = False
         self.left_down_time: float = 0.0
         self.last_pos = (0, 0)
@@ -216,6 +217,11 @@ class MouseController:
 
     def _send_input(self, flags: int, data: int = 0, dx: int = 0, dy: int = 0, action_name: str = "MOUSE"):
         self.last_action = action_name
+        if self.safe_sink:
+            self.last_sendinput_ret = 1
+            self.last_sendinput_err = 0
+            return
+
         if self.send_hook:
             self.send_hook(flags, data, dx, dy)
             return

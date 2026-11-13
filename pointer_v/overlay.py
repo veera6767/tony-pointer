@@ -147,6 +147,15 @@ class CursorOverlayWindow(QWidget):
         hold_kind: str = ""
     ):
         """Called on frame updates with mapped screen coordinates."""
+        # Skip redundant moves and updates if position and state haven't changed
+        pos_changed = (x != self.cursor_x or y != self.cursor_y)
+        state_changed = (state != self.state)
+        dwell_changed = abs(dwell - self.dwell_progress) >= 0.02
+        hold_changed = abs(hold_prog - self.hold_progress) >= 0.02
+
+        if not (pos_changed or state_changed or dwell_changed or hold_changed):
+            return
+
         self.cursor_x = x
         self.cursor_y = y
         self.dwell_progress = dwell
@@ -161,9 +170,10 @@ class CursorOverlayWindow(QWidget):
         else:
             self.hold_color = QColor(AMBER)
 
-        # Record comet trail
+        # Record comet trail (if enabled and not lite mode)
         now = time.perf_counter()
-        if getattr(self.settings.overlay, "cursor_trail", True):
+        lite_mode = getattr(self.settings.overlay, "lite_cursor", False)
+        if getattr(self.settings.overlay, "cursor_trail", True) and not lite_mode:
             self.trail.append((float(x), float(y), now))
 
         if state != self.state:
@@ -175,7 +185,11 @@ class CursorOverlayWindow(QWidget):
 
         # Center the overlay window so the hotspot (center of box) is exactly at (x, y)
         half = self.box_size // 2
-        self.move(x - half, y - half)
+        new_x = x - half
+        new_y = y - half
+        cur_pos = self.pos()
+        if cur_pos.x() != new_x or cur_pos.y() != new_y:
+            self.move(new_x, new_y)
         self.update()
 
     def trigger_click_anim(self, double: bool = False):
@@ -253,6 +267,7 @@ class CursorOverlayWindow(QWidget):
             self.update()
 
     def paintEvent(self, event):
+        t0 = time.perf_counter()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
@@ -282,8 +297,10 @@ class CursorOverlayWindow(QWidget):
             bgt_col = QColor("#FBBF24")
             deep_col = QColor("#78350F")
 
+        lite_mode = getattr(self.settings.overlay, "lite_cursor", False)
+
         # 1. Comet Trail (last 8 positions fading behind cursor)
-        if getattr(self.settings.overlay, "cursor_trail", True) and len(self.trail) > 1:
+        if not lite_mode and getattr(self.settings.overlay, "cursor_trail", True) and len(self.trail) > 1:
             trail_list = list(self.trail)
             for i in range(len(trail_list) - 1):
                 tx, ty, _ = trail_list[i]
@@ -298,7 +315,7 @@ class CursorOverlayWindow(QWidget):
                 painter.drawEllipse(QPointF(lx, ly), r_trail, r_trail)
 
         # 2. Soft Ambient Glow
-        if getattr(self.settings.overlay, "cursor_glow", True) and self.state != "LOST":
+        if not lite_mode and getattr(self.settings.overlay, "cursor_glow", True) and self.state != "LOST":
             glow_rad = 36.0 * scale
             glow_grad = QRadialGradient(cx, cy, glow_rad)
             glow_grad.setColorAt(0.0, QColor(pri_col.red(), pri_col.green(), pri_col.blue(), 75))
@@ -398,3 +415,6 @@ class CursorOverlayWindow(QWidget):
             painter.setFont(get_mono_font(8, bold=True))
             painter.setPen(QPen(text_color))
             painter.drawText(QRectF(chip_x, chip_y, chip_w, chip_h), Qt.AlignmentFlag.AlignCenter, self.mode_chip_text)
+
+        from instrumentation import record_paint_timing
+        record_paint_timing("overlay_ms", (time.perf_counter() - t0) * 1000.0)

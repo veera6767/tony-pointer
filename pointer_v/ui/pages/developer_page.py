@@ -11,7 +11,7 @@ from typing import Dict
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QMessageBox, QPushButton, QVBoxLayout, QWidget
+    QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
 )
 
 from recorder import LandmarkRecorder
@@ -30,6 +30,7 @@ class DeveloperPage(QWidget):
     replay_file_requested = Signal(str)
     test_keyboard_requested = Signal()
     test_cursor_requested = Signal()
+    inject_gesture_requested = Signal(str)
 
     def __init__(
         self,
@@ -236,10 +237,35 @@ class DeveloperPage(QWidget):
         self.btn_replay.clicked.connect(self._load_replay)
         btn_row.addWidget(self.btn_replay)
 
+        self.btn_inject_palm = QPushButton("Inject Open-Palm Hold (1.0s)")
+        self.btn_inject_palm.setFixedHeight(32)
+        self.btn_inject_palm.clicked.connect(lambda: self.inject_gesture_requested.emit("open_palm"))
+        btn_row.addWidget(self.btn_inject_palm)
+
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
+        # Gesture Event Log Card (Ring buffer of last 20 events)
+        log_card = QFrame()
+        log_card.setStyleSheet(f"background-color: {BG1_PANELS}; border: 1px solid {BORDER}; border-radius: {RADIUS_PANEL}px;")
+        l_layout = QVBoxLayout(log_card)
+        l_layout.setContentsMargins(16, 12, 16, 12)
+        l_layout.setSpacing(8)
+
+        log_header = QLabel("Live Gesture Event Log (Last 20 Events)")
+        log_header.setFont(get_ui_font(12, bold=True))
+        log_header.setStyleSheet(f"color: {TEXT_PRIMARY};")
+        l_layout.addWidget(log_header)
+
+        self.event_log_view = QPlainTextEdit()
+        self.event_log_view.setReadOnly(True)
+        self.event_log_view.setFixedHeight(110)
+        self.event_log_view.setFont(get_mono_font(9))
+        self.event_log_view.setStyleSheet(f"background-color: {BG2_CARDS}; border: 1px solid {BORDER_STRONG}; color: {TEXT_PRIMARY};")
+        l_layout.addWidget(self.event_log_view)
+
         parent_layout.addWidget(card)
+        parent_layout.addWidget(log_card)
 
     def update_telemetry(self, telem: Dict):
         """Updates live diagnostics values at 30 FPS. Strict privacy enforced."""
@@ -321,6 +347,13 @@ class DeveloperPage(QWidget):
             self.diag_reason.setStyleSheet(f"color: {AMBER};")
         else:
             self.diag_reason.setStyleSheet(f"color: {TEXT_PRIMARY};")
+
+        events = telem.get("gesture_events", [])
+        if events:
+            lines = [f"[{e.get('time', '')}] {e.get('action', '')} | Pose: {e.get('pose', '')} | {e.get('status', '')}" for e in events]
+            self.event_log_view.setPlainText("\n".join(lines))
+        else:
+            self.event_log_view.setPlainText("No gesture events recorded yet.")
 
     def _run_camera_test(self):
         """Validates camera stream and MediaPipe task model on disk."""

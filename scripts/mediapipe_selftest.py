@@ -23,6 +23,7 @@ print(f"Python: {sys.version}")
 
 try:
     import mediapipe as mp
+
     print(f"MediaPipe version: {mp.__version__}")
 except ImportError as e:
     print(f"[FATAL] Could not import mediapipe: {e}")
@@ -63,10 +64,7 @@ except Exception as e:
 
 # Initialize HandLandmarker with CPU delegate
 try:
-    base_options = python.BaseOptions(
-        model_asset_buffer=model_buffer,
-        delegate=python.BaseOptions.Delegate.CPU
-    )
+    base_options = python.BaseOptions(model_asset_buffer=model_buffer, delegate=python.BaseOptions.Delegate.CPU)
     options = vision.HandLandmarkerOptions(
         base_options=base_options,
         running_mode=vision.RunningMode.VIDEO,
@@ -79,6 +77,7 @@ try:
     print("HandLandmarker initialized successfully with CPU delegate!")
 except Exception as e:
     import traceback
+
     print(f"[FATAL] Failed to create HandLandmarker: {e}")
     traceback.print_exc()
     sys.exit(1)
@@ -109,12 +108,27 @@ last_ts_ms = -1
 annotated_saved = False
 
 HAND_CONNECTIONS = [
-    (0, 1), (1, 2), (2, 3), (3, 4),
-    (0, 5), (5, 6), (6, 7), (7, 8),
-    (5, 9), (9, 10), (10, 11), (11, 12),
-    (9, 13), (13, 14), (14, 15), (15, 16),
-    (13, 17), (17, 18), (18, 19), (19, 20),
-    (0, 17)
+    (0, 1),
+    (1, 2),
+    (2, 3),
+    (3, 4),
+    (0, 5),
+    (5, 6),
+    (6, 7),
+    (7, 8),
+    (5, 9),
+    (9, 10),
+    (10, 11),
+    (11, 12),
+    (9, 13),
+    (13, 14),
+    (14, 15),
+    (15, 16),
+    (13, 17),
+    (17, 18),
+    (18, 19),
+    (19, 20),
+    (0, 17),
 ]
 
 while time.perf_counter() - start_time < 5.0:
@@ -164,7 +178,7 @@ while time.perf_counter() - start_time < 5.0:
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.8,
                     (255, 255, 0),
-                    2
+                    2,
                 )
                 save_path = ROOT / "scripts" / "mediapipe_selftest_frame.jpg"
                 cv2.imwrite(str(save_path), frame)
@@ -182,7 +196,6 @@ fps = total_frames / duration if duration > 0 else 0
 print(f"\n=== RESULTS ===")
 print(f"Duration: {duration:.2f}s")
 print(f"Total Frames: {total_frames} ({fps:.1f} FPS)")
-print(f"Hand Detected Frames: {hand_frames} / {total_frames} ({(hand_frames/max(1,total_frames)*100):.1f}%)")
+print(f"Hand Detected Frames: {hand_frames} / {total_frames} ({(hand_frames / max(1, total_frames) * 100):.1f}%)")
 print(f"Annotated frame saved: {annotated_saved}")
 print(f"=== END OF TEST ===")
-

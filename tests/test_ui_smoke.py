@@ -87,31 +87,32 @@ def mock_environment(tmp_path):
 def test_main_window_and_every_page_renders_cleanly(qapp, mock_environment):
     """Instantiates MainWindow and navigates through EVERY page, asserting no crashes."""
     env = mock_environment
-    main_win = MainWindow(
-        settings_manager=env["settings_mgr"],
-        mouse_controller=env["mouse"],
-        recorder=env["recorder"],
-        get_status_fn=lambda: env["mock_status"],
-        get_frame_fn=lambda: None,
-        keyboard_output=MagicMock(),
-    )
+    with patch("ui.pages.camera_page.list_available_cameras", return_value=[(0, "Mock Camera")]):
+        main_win = MainWindow(
+            settings_manager=env["settings_mgr"],
+            mouse_controller=env["mouse"],
+            recorder=env["recorder"],
+            get_status_fn=lambda: env["mock_status"],
+            get_frame_fn=lambda: None,
+            keyboard_output=MagicMock(),
+        )
 
-    main_win.show()
+        main_win.show()
 
-    # Step through all sidebar pages in the central stacked deck
-    page_count = main_win.deck.count()
-    assert page_count >= 9, f"Expected at least 9 pages, found {page_count}"
+        # Step through all sidebar pages in the central stacked deck
+        page_count = main_win.deck.count()
+        assert page_count >= 9, f"Expected at least 9 pages, found {page_count}"
 
-    for i in range(page_count):
-        main_win.deck.setCurrentIndex(i)
-        current_page = main_win.deck.currentWidget()
-        assert current_page is not None
-        # Process events for this page
-        for _ in range(5):
-            QCoreApplication.processEvents()
-            time.sleep(0.01)
+        for i in range(page_count):
+            main_win.deck.setCurrentIndex(i)
+            current_page = main_win.deck.currentWidget()
+            assert current_page is not None
+            # Process events for this page
+            for _ in range(5):
+                QCoreApplication.processEvents()
+                time.sleep(0.01)
 
-    main_win.close()
+        main_win.close()
 
 
 def test_individual_pages_direct_instantiation(qapp, mock_environment):
@@ -119,17 +120,18 @@ def test_individual_pages_direct_instantiation(qapp, mock_environment):
     env = mock_environment
     cfg = env["settings_mgr"].config
 
-    pages = [
-        DashboardPage(cfg),
-        CameraPage(cfg, env["mouse"]),
-        GesturesPage(cfg),
-        KeyboardPage(cfg),
-        PracticePage(cfg),
-        SettingsPage(env["settings_mgr"]),
-        CalibrationPage(cfg),
-        AboutPage(lambda: env["mock_status"]),
-        DeveloperPage(cfg, env["recorder"]),
-    ]
+    with patch("ui.pages.camera_page.list_available_cameras", return_value=[(0, "Mock Camera")]):
+        pages = [
+            DashboardPage(cfg),
+            CameraPage(cfg, env["mouse"]),
+            GesturesPage(cfg),
+            KeyboardPage(cfg),
+            PracticePage(cfg),
+            SettingsPage(env["settings_mgr"]),
+            CalibrationPage(cfg),
+            AboutPage(lambda: env["mock_status"]),
+            DeveloperPage(cfg, env["recorder"]),
+        ]
 
     for page in pages:
         page.show()
@@ -181,13 +183,14 @@ def test_dialogs_overlays_and_hud_render_cleanly(qapp, mock_environment):
         tray.hide()
 
 
+@patch("ui.pages.camera_page.list_available_cameras", return_value=[(0, "Mock Camera")])
 @patch("PySide6.QtWidgets.QFileDialog.getOpenFileName", return_value=("", ""))
 @patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=("", ""))
 @patch("PySide6.QtWidgets.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes)
 @patch("PySide6.QtWidgets.QMessageBox.warning", return_value=QMessageBox.StandardButton.Ok)
 @patch("PySide6.QtWidgets.QMessageBox.information", return_value=QMessageBox.StandardButton.Ok)
 @patch("mouse.ctypes.windll.user32.SendInput", return_value=1)
-def test_click_every_button_and_toggle(mock_sendinput, mock_info, mock_warn, mock_quest, mock_save, mock_open, qapp, mock_environment):
+def test_click_every_button_and_toggle(mock_sendinput, mock_info, mock_warn, mock_quest, mock_save, mock_open, mock_cams, qapp, mock_environment):
     """Finds all buttons and toggle switches on every page and triggers them without exception."""
     env = mock_environment
     cfg = env["settings_mgr"].config

@@ -54,6 +54,19 @@ class FingerTapDetector:
             "thumb": 0.0, "index": 0.0, "middle": 0.0, "ring": 0.0, "pinky": 0.0
         }
 
+    def compute_curls(self, hand: Optional[HandFrame]) -> Dict[str, float]:
+        """Calculates normalized curl metrics (0.0 = straight, 1.0 = fully curled) for all 5 fingers."""
+        if hand is None:
+            return dict(self.current_curls)
+        for f_name, tip_idx, dip_idx, pip_idx, mcp_idx in self.fingers:
+            pip_angle = hand.angle_deg(mcp_idx, pip_idx, tip_idx)
+            curl_metric = max(0.0, min(1.0, (170.0 - pip_angle) / 70.0))
+            self.current_curls[f_name] = curl_metric
+        thumb_angle = hand.angle_deg(1, 2, 4)
+        thumb_curl = max(0.0, min(1.0, (160.0 - thumb_angle) / 55.0))
+        self.current_curls["thumb"] = thumb_curl
+        return dict(self.current_curls)
+
     def process(self, hand: Optional[HandFrame]) -> Tuple[Optional[str], bool, Dict[str, float]]:
         """
         Evaluates frame for finger taps or hold-repeats.
