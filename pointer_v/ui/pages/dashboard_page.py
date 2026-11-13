@@ -254,6 +254,7 @@ class DashboardPage(QWidget):
         kb_row = telemetry.get("kb_row", 3)
         mode = telemetry.get("mode", "POINTER")
         is_paused = telemetry.get("is_paused", False)
+        is_yielding = telemetry.get("is_yielding", "YIELDING" in status_text)
 
         is_active = telemetry.get("is_active", False)
         raw_hand = telemetry.get("raw_hand")
@@ -341,7 +342,13 @@ class DashboardPage(QWidget):
         else:
             self.lbl_recent_events.setText("Recent: Listening...")
 
-        self.mode_chip.set_status(mode, is_paused)
+        self.mode_chip.set_status(
+            mode,
+            is_paused=is_paused,
+            is_yielding=is_yielding,
+            hand_visible=hand_detected,
+            is_active=is_active,
+        )
 
         # Privacy: Hide last typed strip if requested
         if getattr(self.settings.privacy, "hide_last_typed", False):

@@ -163,7 +163,7 @@ class MultiMonitorSettings:
 
 @dataclass
 class AppConfig:
-    version: str = "2.0.3"
+    version: str = "2.0.4"
     camera_index: int = 0
     camera_name: str = ""
     camera_width: int = 1280

@@ -75,7 +75,7 @@ class ModeChip(QWidget):
         self.hand_visible = True
         self.is_active = False
         self.setFixedHeight(26)
-        self.setMinimumWidth(130)
+        self._update_width()
 
     def _get_current_text(self) -> Tuple[str, QColor]:
         if not self.is_active:
@@ -95,11 +95,15 @@ class ModeChip(QWidget):
         text, _ = self._get_current_text()
         from PySide6.QtGui import QFontMetrics
         fm = QFontMetrics(get_ui_font(10, bold=True))
-        w = fm.horizontalAdvance(text) + 28
-        return QSize(max(130, w), 26)
+        w = fm.horizontalAdvance(text) + 40
+        return QSize(max(150, w), 26)
 
     def minimumSizeHint(self):
         return self.sizeHint()
+
+    def _update_width(self):
+        hint = self.sizeHint()
+        self.setFixedWidth(hint.width())
 
     def set_status(
         self,
@@ -114,6 +118,7 @@ class ModeChip(QWidget):
         self.is_yielding = is_yielding
         self.hand_visible = hand_visible
         self.is_active = is_active
+        self._update_width()
         self.updateGeometry()
         self.update()
 
@@ -124,14 +129,15 @@ class ModeChip(QWidget):
         text, color = self._get_current_text()
 
         h = self.height()
+        w = self.width()
 
         # Pill background
         bg = QColor(color.red(), color.green(), color.blue(), 28)
         painter.setBrush(bg)
         painter.setPen(QPen(color, 1))
-        painter.drawRoundedRect(QRectF(1, 1, self.width() - 2, h - 2), h / 2, h / 2)
+        painter.drawRoundedRect(QRectF(1, 1, w - 2, h - 2), h / 2, h / 2)
 
-        # Text
+        # Text with generous margins so rounded caps never clip it
         painter.setFont(get_ui_font(10, bold=True))
         painter.setPen(color)
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, text)

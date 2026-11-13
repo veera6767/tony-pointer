@@ -801,9 +801,9 @@ class PointerVApp(QObject):
             try:
                 loop_start = time.perf_counter()
 
-                # If inactive and not previewing or testing, sleep to keep CPU near 0%
-                if not self.is_active and not self.main_window_needs_camera and not self.scenario_gen:
-                    time.sleep(0.05)
+                # If camera is not running and not injecting, sleep briefly to keep CPU near 0%
+                if not self.camera.running and not self.scenario_gen:
+                    time.sleep(0.02)
                     continue
 
                 # Stage 1: Camera capture or Synthetic Ingestion

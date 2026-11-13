@@ -56,14 +56,17 @@ class CameraPreviewOverlay(QWidget):
         primary = QGuiApplication.primaryScreen()
         geo = primary.availableGeometry() if primary else QRect(0, 0, 1920, 1080)
 
-        # Default safe location: Top-Right of work area, never covering main window heading
+        # Default safe location: Top-Right of work area, never covering main window heading or sidebar
         default_x = geo.right() - w - 24
         default_y = geo.top() + 24
 
         if px > 0 and py > 0:
             target_rect = QRect(px, py, w, h)
             is_visible = any(s.geometry().intersects(target_rect) for s in QGuiApplication.screens())
-            if is_visible:
+            # Guard: If px, py is in the top-left area where the sidebar and heading live,
+            # relocate to the safe top-right corner to prevent obscuring navigation controls.
+            is_in_danger_zone = (px < geo.left() + 280 and py < geo.top() + 280)
+            if is_visible and not is_in_danger_zone:
                 self.move(px, py)
                 return
 
@@ -94,7 +97,7 @@ class CameraPreviewOverlay(QWidget):
         t0 = time.perf_counter()
         if not hasattr(self, "_last_render_time"):
             self._last_render_time = 0.0
-        if t0 - self._last_render_time < 0.066:  # Max 15 FPS rendering to UI
+        if t0 - self._last_render_time < 0.033:  # Smooth 30 FPS rendering to UI
             return
         self._last_render_time = t0
 
