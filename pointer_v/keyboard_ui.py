@@ -102,7 +102,9 @@ class FloatingAirKeyboardWidget(QWidget):
 
         self.anim_timer = QTimer(self)
         self.anim_timer.timeout.connect(self._on_animate)
-        self.anim_timer.start(16)
+        # Start at 200ms (slow tick) while keyboard is hidden to save UI-thread time.
+        # animate_show() resets it to 16ms for smooth slide-in.
+        self.anim_timer.start(200)
 
         self._recalculate_window_size()
 
@@ -195,12 +197,6 @@ class FloatingAirKeyboardWidget(QWidget):
         pos = self.calculate_corner_position()
         self.move(pos)
 
-    def showEvent(self, event):
-        super().showEvent(event)
-        # Apply Win32 NOACTIVATE style after window is created
-        apply_noactivate_style(int(self.winId()))
-        self._ensure_on_screen()
-
     def _ensure_on_screen(self):
         from PySide6.QtCore import QRect
         from PySide6.QtGui import QGuiApplication
@@ -273,16 +269,17 @@ class FloatingAirKeyboardWidget(QWidget):
         self.is_opening = True
         self.is_animating = True
         self.anim_progress = 0.0
+        # Speed the animation timer back to 16ms for smooth slide-in.
+        # (It may have been slowed to 200ms while hidden to save UI thread time.)
+        self.anim_timer.setInterval(16)
         self.show()
-        try:
-            apply_noactivate_style(int(self.winId()))
-        except Exception as e:
-            print(f"[KeyboardHUD] Note: {e}")
+        # showEvent applies NOACTIVATE; no need to call it again here.
 
     def showEvent(self, event):
         super().showEvent(event)
         try:
             apply_noactivate_style(int(self.winId()))
+            self._ensure_on_screen()
         except Exception:
             pass
 
@@ -305,6 +302,7 @@ class FloatingAirKeyboardWidget(QWidget):
         self.is_opening = False
         self.is_animating = True
         self.anim_progress = 0.0
+        # Keep timer at 16ms during hide animation; _on_animate slows it to 200ms once hidden.
 
     def _recalculate_window_size(self):
         """Scales keyboard between 720 and 1100 px (about 40% of screen width)."""
@@ -377,6 +375,8 @@ class FloatingAirKeyboardWidget(QWidget):
                 self.setWindowOpacity(self.anim_target_opacity)
                 if not self.is_opening:
                     self.hide()
+                # Slow the timer down when hidden — no need to keep painting at 62 Hz
+                self.anim_timer.setInterval(200)
             else:
                 # OutCubic easing
                 t = self.anim_progress - 1.0
@@ -387,7 +387,10 @@ class FloatingAirKeyboardWidget(QWidget):
                 self.move(cur_x, cur_y)
                 self.setWindowOpacity(cur_op)
 
-        self.update()
+        # Only trigger a repaint when the widget is actually visible — avoids
+        # ~62 Hz paintEvent overhead on the UI thread while keyboard is hidden.
+        if self.isVisible():
+            self.update()
 
     def paintEvent(self, event):
         t0 = time.perf_counter()
