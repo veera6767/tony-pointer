@@ -46,7 +46,7 @@
 ## Quick Start for Users
 
 ### Option A: Windows Installer (Recommended)
-1. Download `PointerV-Setup-2.0.1.exe` from [Releases](https://github.com/veera6767/tony-pointer/releases).
+1. Download `PointerV-Setup-2.0.4.exe` from [Releases](https://github.com/veera6767/tony-pointer/releases).
 2. Run the installer. You can optionally enable **Start with Windows** and create a Desktop shortcut.
 3. Launch **Pointer V** from your Start Menu.
 4. Position your webcam at chest or eye height and follow the interactive 7-step onboarding tutorial.
@@ -55,7 +55,7 @@
 > **Windows Defender / SmartScreen**: Since this is a newly released independent open-source binary, Windows SmartScreen may show an informational prompt ("Windows protected your PC"). Click **More info** -> **Run anyway**. You can verify the official SHA-256 checksums in the release notes.
 
 ### Option B: Recipient Standalone Setup (`share/`)
-- A single standalone setup executable is pre-packaged in `share/PointerV-Setup-2.0.1.exe` alongside `share/README_FIRST.txt` and SHA-256 checksums in `share/PointerV-Setup-2.0.1.exe.sha256`.
+- A single standalone setup executable is pre-packaged in `share/PointerV-Setup-2.0.4.exe` alongside `share/README_FIRST.txt` and SHA-256 checksums in `share/PointerV-Setup-2.0.4.exe.sha256`.
 - Includes VC++ 2015-2022 redistributable verification, single-instance detection, uninstaller, and desktop shortcut.
 - Installs by default per-user to `%LOCALAPPDATA%\Programs\Pointer V` (no administrator password required).
 
@@ -63,8 +63,8 @@
 
 ## Known Issues & Release Notes
 
-> [!WARNING]
-> **v2.0.0 Known Startup Issue**: Build v2.0.0 contained a startup exception (`NameError: RED`) when initializing the Dashboard status banner. This is fully fixed in **v2.0.1**. If you installed v2.0.0, install or update to v2.0.1.
+> [!NOTE]
+> **v2.0.4 Zero-Freeze Engine & Keyboard HUD Fix**: Build v2.0.4 fixes the open-palm air keyboard freeze, removes hidden widget 62 Hz animation repaints, prevents PiP preview overlap with top-left navigation, corrects ModeChip text clipping, decouples the webcam hardware lifecycle (LED stays OFF when inactive), and introduces native Win32 `RegisterHotKey` hooks with emergency panic disengage (`Ctrl+Alt+Shift+Esc`).
 
 ---
 
@@ -100,7 +100,7 @@ This runs headless verification without requiring a webcam, writes a status repo
 ---
 
 ### Option C: Portable ZIP Package
-1. Download `PointerV-Portable-2.0.1.zip`.
+1. Download `PointerV-Portable-2.0.4.zip`.
 2. Extract the folder anywhere on your PC.
 3. Run `PointerV.exe`. No installation, Python setup, or administrator privileges required.
 
@@ -110,7 +110,7 @@ This runs headless verification without requiring a webcam, writes a status repo
 
 ### Prerequisites
 - Windows 10 or 11 (64-bit)
-- Python 3.11 or 3.12 (with `pip`)
+- Python 3.12 (with `pip`)
 - Node.js v18+ and npm (for Web Studio)
 
 ### 1. Run the Python Desktop Application
@@ -141,7 +141,7 @@ pytest tests -v
 cd pointer_v
 build_exe.bat
 
-:: Build Inno Setup Windows installer (output: installers\Output\PointerV-Setup-2.0.1.exe)
+:: Build Inno Setup Windows installer (output: installers\Output\PointerV-Setup-2.0.4.exe)
 cd ..\installers
 build_installer.bat
 ```
@@ -246,7 +246,7 @@ Settings are saved in `%APPDATA%\PointerV\settings.json`. Legacy configurations 
 | **Cannot click in Task Manager or game** | Target application is running with elevated Admin privileges | Launch Pointer V as Administrator (`Run as Administrator`) so `SendInput` has OS permission to inject events into elevated windows. |
 | **Cursor jumps or jitters** | Cluttered visual background with hands/faces or reflective surfaces | Point camera toward a plain wall or ensure only one hand is raised within the active region box. |
 | **Keys trigger unexpectedly** | Neighbor finger curl threshold too sensitive | In Settings -> Keyboard, increase `Neighbor Lockout` to `200 ms` or adjust finger curl threshold. |
-| **SmartScreen warning during install** | Freshly compiled independent open-source binary | Click **More info -> Run anyway**. Checksum can be verified with `certutil -hashfile PointerV-Setup-2.0.1.exe SHA256`. |
+| **SmartScreen warning during install** | Freshly compiled independent open-source binary | Click **More info -> Run anyway**. Checksum can be verified with `certutil -hashfile PointerV-Setup-2.0.4.exe SHA256`. |
 
 ---
 

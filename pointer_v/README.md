@@ -66,9 +66,9 @@ Pointer V is a native Windows 10/11 system utility built with Python 3.12, PySid
 
 ## Standalone Distribution & Installer
 
-- **Inno Setup Single Installer**: `installers/Output/PointerV-Setup-2.0.1.exe`
-- **Recipient Share Folder**: `share/PointerV-Setup-2.0.1.exe` with accompanying `README_FIRST.txt` and SHA-256 checksum in `share/PointerV-Setup-2.0.1.exe.sha256`.
-- **Known Issues Note**: v2.0.0 startup issue fixed in v2.0.1.
+- **Inno Setup Single Installer**: `installers/Output/PointerV-Setup-2.0.4.exe`
+- **Recipient Share Folder**: `share/PointerV-Setup-2.0.4.exe` with accompanying `README_FIRST.txt` and SHA-256 checksum in `share/PointerV-Setup-2.0.4.exe.sha256`.
+- **Release Status**: v2.0.4 Zero-Freeze Engine, native Win32 `RegisterHotKey` global hooks, and independent floating overlays.
 - **Repository**: [https://github.com/veera6767/tony-pointer](https://github.com/veera6767/tony-pointer)
 
 ---

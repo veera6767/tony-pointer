@@ -105,7 +105,7 @@ jobs:
         run: |
           dist\PointerV\PointerV.exe --selftest
 
-      - name: Gate 4 - Compile Inno Setup Installer (v2.0.1)
+      - name: Gate 4 - Compile Inno Setup Installer
         working-directory: installers
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" PointerV.iss
@@ -113,8 +113,10 @@ jobs:
       - name: Gate 5 - Test Silent Installation & Installed Binary Self-Test
         shell: pwsh
         run: |
+          $installer = Get-ChildItem installers/Output/PointerV-Setup-*.exe | Select-Object -First 1
+          if (-not $installer) { throw "Setup executable not found in installers/Output" }
           $testDir = "$env:TEMP\PointerV_CITest"
-          & "installers\Output\PointerV-Setup-2.0.1.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="$testDir"
+          & $installer.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="$testDir"
           & "$testDir\PointerV.exe" --selftest
           if ($LASTEXITCODE -ne 0) { throw "Installed binary failed --selftest with exit code $LASTEXITCODE" }
           & "$testDir\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
@@ -122,31 +124,31 @@ jobs:
           Remove-Item -Path $testDir -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Create Portable Zip
-        working-directory: pointer_v/dist
+        shell: pwsh
         run: |
-          Compress-Archive -Path PointerV -DestinationPath PointerV-Portable-2.0.1.zip -Force
+          $version = (Get-Content pointer_v/version.py | Select-String '__version__ = "(.*)"').Matches.Groups[1].Value
+          Compress-Archive -Path pointer_v/dist/PointerV -DestinationPath "installers/Output/PointerV-Portable-$version.zip" -Force
 
       - name: Compute Checksums
         working-directory: installers
         shell: pwsh
         run: |
-          $installer = "Output/PointerV-Setup-2.0.1.exe"
-          $zip = "../pointer_v/dist/PointerV-Portable-2.0.1.zip"
-          $hash1 = (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLower()
-          $hash2 = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
+          $installer = Get-ChildItem Output/PointerV-Setup-*.exe | Select-Object -First 1
+          $zip = Get-ChildItem Output/PointerV-Portable-*.zip | Select-Object -First 1
+          $hash1 = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash.ToLower()
+          $hash2 = (Get-FileHash -Algorithm SHA256 $zip.FullName).Hash.ToLower()
           
-          "$hash1  PointerV-Setup-2.0.1.exe" | Out-File -FilePath Output/SHA256SUMS.txt -Encoding utf8
-          "$hash2  PointerV-Portable-2.0.1.zip" | Out-File -FilePath Output/SHA256SUMS.txt -Append -Encoding utf8
+          "$hash1  $($installer.Name)" | Out-File -FilePath Output/SHA256SUMS.txt -Encoding utf8
+          "$hash2  $($zip.Name)" | Out-File -FilePath Output/SHA256SUMS.txt -Append -Encoding utf8
           
-          Copy-Item $zip -Destination Output/
           Get-Content Output/SHA256SUMS.txt
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: PointerV-Windows-v2.0.1
+          name: PointerV-Windows-Artifacts
           path: |
-            installers/Output/PointerV-Setup-2.0.1.exe
-            installers/Output/PointerV-Portable-2.0.1.zip
+            installers/Output/PointerV-Setup-*.exe
+            installers/Output/PointerV-Portable-*.zip
             installers/Output/SHA256SUMS.txt
           if-no-files-found: error

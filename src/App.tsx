@@ -154,6 +154,9 @@ export default function App() {
           <span className="text-base font-bold tracking-wider text-white">
             POINTER V
           </span>
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-blue-950 text-blue-300 border border-blue-800">
+            v2.0.4
+          </span>
         </div>
 
         {/* Navigation Tabs */}

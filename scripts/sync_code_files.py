@@ -29,6 +29,9 @@ DESCRIPTIONS = {
     "recorder.py": "Pointer V - Raw 21-Point Landmark Session Recorder & Replayer",
     "sound.py": "Pointer V - Low-Latency Audio Feedback & Synthetic Cues Dispatcher",
     "logger.py": "Pointer V - Privacy-Preserving Rotating Logger",
+    "hotkeys.py": "Pointer V - Native Win32 RegisterHotKey Global Hotkey Dispatcher",
+    "instrumentation.py": "Pointer V - UI Watchdog & Performance Metrics Collector",
+    "scenario_generator.py": "Pointer V - Synthetic Gesture Landmark Scenario Generator",
 }
 
 def sync():

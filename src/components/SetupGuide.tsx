@@ -12,28 +12,28 @@ export const SetupGuide: React.FC = () => {
 
   const steps = [
     {
-      title: "1. Install Python 3.11",
-      description: "Download Python 3.11 from python.org. During installation, make sure to check the box 'Add Python to PATH'.",
-      command: "python --version",
-      notes: "Verify in Command Prompt or PowerShell that Python 3.11+ is printed."
+      title: "Option A: Download Windows Installer (v2.0.4)",
+      description: "No Python environment required. Download the pre-packaged setup executable from GitHub Releases or the local share/ folder:",
+      command: "PointerV-Setup-2.0.4.exe",
+      notes: "Includes auto-updater, start menu shortcuts, uninstaller, and self-contained Python 3.12 runtime."
     },
     {
-      title: "2. Install Python Dependencies",
+      title: "Option B1: Install Python 3.12 (For Source)",
+      description: "Download Python 3.12 from python.org. During installation, make sure to check the box 'Add Python to PATH':",
+      command: "py -3.12 --version",
+      notes: "Verify in PowerShell or Command Prompt that Python 3.12+ is printed."
+    },
+    {
+      title: "Option B2: Install Dependencies",
       description: "Install MediaPipe Tasks, OpenCV, PySide6, Win32 bindings, and hotkey drivers:",
-      command: "pip install -r requirements.txt",
-      notes: "Pointer V comes pre-bundled with hand_landmarker.task model, fonts, icons, and sounds."
+      command: "cd pointer_v && pip install -r requirements.txt",
+      notes: "Pre-bundled with hand_landmarker.task model, Inter/JetBrains Mono fonts, and audio feedback."
     },
     {
-      title: "3. Run Pointer V",
-      description: "Start the native Windows gesture controller application:",
-      command: "python main.py",
-      notes: "The main window will appear with live camera preview, telemetry, and quick settings."
-    },
-    {
-      title: "4. Build Standalone .EXE & Installer",
-      description: "Compile Pointer V into a standalone executable or Inno Setup installer package:",
-      command: "build_exe.bat",
-      notes: "The standalone executable is generated at dist\\PointerV\\PointerV.exe."
+      title: "Option B3: Launch or Build",
+      description: "Run directly from source or compile a standalone executable with Inno Setup:",
+      command: "cd pointer_v && python main.py",
+      notes: "To compile your own installer, run installers\\build_installer.bat (passes all 5 quality gates)."
     }
   ];
 
@@ -42,10 +42,10 @@ export const SetupGuide: React.FC = () => {
       <div className="flex items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
           <h2 className="text-lg font-bold font-hud text-cyan-400 tracking-wide">
-            WINDOWS INSTALLATION & DEPLOYMENT PROTOCOL
+            WINDOWS INSTALLATION & DEPLOYMENT PROTOCOL (v2.0.4)
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Step-by-step instructions for running with Python 3.11 and bundling into a standalone .exe
+            Install the verified standalone executable or run from source with Python 3.12 on Windows 11
           </p>
         </div>
       </div>

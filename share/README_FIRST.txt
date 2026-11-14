@@ -1,5 +1,5 @@
 ======================================================================
-                     POINTER V (PV) - v2.0.1
+                     POINTER V (PV) - v2.0.4
        Native Windows Hand Gesture Mouse & Air Keyboard Controller
 ======================================================================
 
@@ -18,7 +18,7 @@ to control Windows with your hand using an ordinary webcam.
 ----------------------------------------------------------------------
 2. HOW TO INSTALL
 ----------------------------------------------------------------------
-1. Double-click "PointerV-Setup-2.0.1.exe".
+1. Double-click "PointerV-Setup-2.0.4.exe".
 2. If Windows SmartScreen displays "Windows protected your PC":
    - Click "More info"
    - Click "Run anyway"
@@ -39,7 +39,7 @@ When the Pointer V window opens, check the 6-item Dashboard status:
 4. Pointer V: Click the large "POINTER MODE" button or press Ctrl+Alt+T
    to activate cursor control.
 5. Cursor: The blue gaming reticle will follow your index fingertip.
-6. Air Keyboard: Open your palm flat for 0.5 seconds, or press Ctrl+Alt+K,
+6. Air Keyboard: Open your palm flat for 0.8 seconds, or press Ctrl+Alt+K,
    to open the floating corner Air Keyboard.
 
 ----------------------------------------------------------------------
@@ -51,21 +51,22 @@ When the Pointer V window opens, check the 6-item Dashboard status:
 - Drag & Drop: Close fist over an item to hold; move hand; open hand to drop.
 - Scroll: Move index and middle finger up/down together.
 - Air Keyboard (Floating HUD):
-  - Hold open palm flat for 0.5s to show keyboard docked in bottom-right corner.
-  - Swipe hand left / right to navigate between letter clusters.
+  - Hold open palm flat for 0.8s to show keyboard docked in corner.
+  - Swipe hand left / right / up / down to navigate between letter clusters.
   - Curl your index, middle, ring, or pinky finger to strike keys.
-  - Hold fist for 0.5s to close keyboard.
+  - Hold fist for 0.5s or press Esc to close keyboard.
 - Emergency Safety Release: Press the ESC key at any time.
 
 ----------------------------------------------------------------------
 5. GLOBAL SHORTCUTS
 ----------------------------------------------------------------------
-- Ctrl + Alt + T     : Toggle Pointer V ON / OFF
-- Ctrl + Alt + K     : Toggle Floating Air Keyboard
-- Ctrl + Alt + S     : Switch Keyboard Zone (Main QWERTY <-> Symbols)
-- Ctrl + Alt + P     : Toggle Creative / Paint Mode
-- Ctrl + Alt + Space : Pause / Resume Tracking
-- Esc                : Safety release (releases all held buttons)
+- Ctrl + Alt + T          : Toggle Pointer V ON / OFF
+- Ctrl + Alt + K          : Toggle Floating Air Keyboard
+- Ctrl + Alt + S          : Switch Keyboard Zone (Main QWERTY <-> Symbols)
+- Ctrl + Alt + P          : Toggle Creative / Paint Mode
+- Ctrl + Alt + Space      : Pause / Resume Tracking
+- Esc                     : Safety release (releases all held buttons)
+- Ctrl + Alt + Shift + Esc: Panic killswitch (immediate disengage)
 
 ----------------------------------------------------------------------
 6. CONTROLLING ELEVATED / ADMINISTRATOR WINDOWS
@@ -90,6 +91,6 @@ To uninstall Pointer V:
 ----------------------------------------------------------------------
 8. FILE CHECKSUMS (SHA-256)
 ----------------------------------------------------------------------
-PointerV-Setup-2.0.0.exe:
-01386DA31384F73701BC4C9A222A03C6F56AB699DFF359AA82253567D1E444C1
+PointerV-Setup-2.0.4.exe:
+cc6c73ec9879f261893ced8ec185bac13f61bc1e8e698ec0b63c35d625464758
 
