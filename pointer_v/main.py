@@ -125,7 +125,7 @@ class WorkerSignals(QObject):
     cursor_updated = Signal(int, int, str, float, float, str)
     click_animated = Signal(bool)
     frame_updated = Signal(object, float)
-    keyboard_updated = Signal(object, int, int, object, bool)
+    keyboard_updated = Signal(object, int, int, object, bool, float, str, object)
     key_typed = Signal(str, str)
     telemetry_updated = Signal()
     tray_notification_requested = Signal(str, str)
@@ -885,7 +885,15 @@ class PointerVApp(QObject):
 
                 action = eval_res["action"]
 
-                if action not in (GestureAction.NONE.value, GestureAction.MOVE.value):
+                log_detail = eval_res.get("log_detail")
+                if log_detail:
+                    self.gesture_event_log.append({
+                        "time": time.strftime("%H:%M:%S"),
+                        "action": action,
+                        "pose": eval_res.get("pose", "UNKNOWN"),
+                        "status": log_detail
+                    })
+                elif action not in (GestureAction.NONE.value, GestureAction.MOVE.value):
                     self.gesture_event_log.append({
                         "time": time.strftime("%H:%M:%S"),
                         "action": action,
@@ -953,7 +961,11 @@ class PointerVApp(QObject):
                 curls_dict = {}
 
                 if self.mode_manager.mode == AppMode.KEYBOARD and self.is_active and not self.mode_manager.is_paused:
-                    tapped_finger, is_repeat, curls_dict = self.finger_tap_detector.process(hand)
+                    any_curling = self.finger_tap_detector.is_curling_fast()
+                    tapped_finger, is_repeat, curls_dict = self.finger_tap_detector.process(
+                        hand,
+                        keyboard_entry_time=getattr(self.mode_manager, "keyboard_entry_time", 0.0),
+                    )
                     cur_window = self.mode_manager.get_current_window()
 
                     if tapped_finger is not None and not self.no_output:
@@ -972,7 +984,7 @@ class PointerVApp(QObject):
                             else:
                                 hand_order = ["index", "middle", "ring", "pinky"]
 
-                            if self.settings.keyboard.finger_mapping == "reversed":
+                            if getattr(self.settings.keyboard, "flip_finger_order", False) or self.settings.keyboard.finger_mapping == "reversed":
                                 hand_order.reverse()
 
                             try:
@@ -994,9 +1006,13 @@ class PointerVApp(QObject):
                                     self.sound.key_click()
                                 log_input_event("key_tap", count=1, duration_ms=(time.perf_counter() - t_dispatch_start) * 1000.0)
 
-                    # Sliding door navigation swipes
+                    # Sliding door navigation swipes (suppressed if finger curling or tap in progress)
                     tap_in_progress = (tapped_finger is not None)
-                    swipe_dir = self.mode_manager.evaluate_swipes(hand, tap_in_progress=tap_in_progress)
+                    swipe_dir = self.mode_manager.evaluate_swipes(
+                        hand,
+                        tap_in_progress=tap_in_progress,
+                        any_finger_curling=any_curling,
+                    )
 
                     if swipe_dir in ("UP", "DOWN", "LEFT", "RIGHT", "CROSS_INTO_SYMBOLS", "CROSS_INTO_MAIN"):
                         self.sound.mode_change()
@@ -1011,7 +1027,10 @@ class PointerVApp(QObject):
                             self.mode_manager.row_idx,
                             self.mode_manager.window_idx,
                             self.keyboard_out.modifiers,
-                            bounce_triggered
+                            bounce_triggered,
+                            getattr(self.mode_manager, "swipe_progress", 0.0),
+                            getattr(self.mode_manager, "swipe_direction", ""),
+                            curls_dict,
                         )
 
                 # Stage 4: Input Output Dispatch

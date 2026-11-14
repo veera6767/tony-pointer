@@ -54,11 +54,14 @@ class PaintModeSettings:
 
 @dataclass
 class GestureSettings:
-    double_tap_window_ms: float = 320.0   # Window for two taps to register as double-click (tuned 320ms)
+    double_tap_window_ms: float = 450.0   # Window for two taps to register as double-click (250-800ms, default 450ms)
     tap_curl_threshold: float = 0.045     # Forward flexion depth/angle change for air tap
     tap_cooldown_ms: float = 220.0        # Anti-repeat cooldown
     neighbor_lockout_ms: float = 160.0    # Lockout across all fingers when any finger taps
     single_click_enabled: bool = True     # Toggle single air tap as left click
+    delay_single_click: bool = True       # Delay single click until double-tap window expires (avoids accidental 1st clicks)
+    click_gesture_style: str = "index_tap" # "index_tap" (default) or "pinch" (thumb-index pinch)
+    cursor_freeze_after_tap_ms: float = 400.0 # Keep cursor frozen after tap to guarantee pixel alignment
     dwell_lock_time_s: float = 0.60       # Index finger stationary time to lock brush
     dwell_radius_px: float = 16.0         # Allowed jitter radius for dwell
     pinch_threshold: float = 0.045        # Normalized 3D distance between thumb & index tip
@@ -70,7 +73,7 @@ class GestureSettings:
     fist_pause_hold_s: float = 1.50       # Closed fist held 1.5s in POINTER mode to pause
     auto_pause_timeout_s: float = 10.0    # Auto pause if no hand is seen for N seconds
     pointing_sensitivity: float = 1.0     # Tolerance for relaxed pointing pose (0.5-2.0)
-    click_mode: str = "left_only"         # "off", "left_only", "all"
+    click_mode: str = "all"               # "off", "left_only", "all" (default "all" per Phase C)
     yield_duration_s: float = 1.5         # Pause cursor movement when physical mouse/touchpad moves
     yield_distance_px: int = 6            # Pixels difference from last set position to detect physical move
     max_brush_lock_s: float = 30.0        # Max duration in seconds to hold button locked
@@ -132,6 +135,10 @@ class KeyboardSettings:
     key_repeat_delay_s: float = 0.50     # 500 ms initial hold delay before repeating
     key_repeat_rate_cps: float = 15.0    # 15 chars/sec repeat rate
     finger_mapping: str = "visual"       # "visual" (left-to-right) or "reversed"
+    flip_finger_order: bool = False      # Reverses physical finger-to-key assignment (for mirrored setups or preference)
+    thumb_pinch_typing: bool = False     # Alternative typing mode: pinch finger to thumb to type
+    show_swipe_meter: bool = True        # Render swipe progress meter in HUD top strip
+    show_finger_bars: bool = True        # Render live finger curl bars in HUD
     hotkey_keyboard: str = "ctrl+alt+k"
     hotkey_zone_toggle: str = "ctrl+alt+s"
     sound_enabled: bool = True
@@ -163,7 +170,7 @@ class MultiMonitorSettings:
 
 @dataclass
 class AppConfig:
-    version: str = "2.0.4"
+    version: str = "2.0.5"
     camera_index: int = 0
     camera_name: str = ""
     camera_width: int = 1280

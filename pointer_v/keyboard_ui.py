@@ -80,6 +80,11 @@ class FloatingAirKeyboardWidget(QWidget):
         self.last_typed_history: List[str] = []
         self.glow_phase: float = 0.0
 
+        # Phase D feedback
+        self.swipe_progress: float = 0.0
+        self.swipe_direction: str = ""
+        self.finger_curls: Dict[str, float] = {}
+
         # Animation state for slide-and-fade
         self.is_animating: bool = False
         self.anim_progress: float = 1.0
@@ -333,12 +338,19 @@ class FloatingAirKeyboardWidget(QWidget):
         row_idx: int,
         window_idx: int,
         modifiers: Dict[str, ModifierState],
-        bounce: bool = False
+        bounce: bool = False,
+        swipe_progress: float = 0.0,
+        swipe_dir: str = "",
+        curls: Optional[Dict[str, float]] = None,
     ):
         self.active_zone = zone
         self.current_row = row_idx
         self.current_window_idx = window_idx
         self.modifiers = modifiers
+        self.swipe_progress = swipe_progress
+        self.swipe_direction = swipe_dir
+        if curls:
+            self.finger_curls = curls
 
         active_window = self.layout_manager.get_window(zone, row_idx, window_idx)
         self.locked_keys = {k.code for k in active_window.keys}
@@ -448,11 +460,34 @@ class FloatingAirKeyboardWidget(QWidget):
         record_paint_timing("keyboard_ms", (time.perf_counter() - t0) * 1000.0)
 
     def _paint_header(self, painter: QPainter):
-        # Center Drag Handle & Title
-        painter.setFont(get_ui_font(9, bold=True))
-        painter.setPen(QColor(TEXT_DISABLED))
-        handle_rect = QRectF(0, 4, self.width(), 16)
-        painter.drawText(handle_rect, Qt.AlignmentFlag.AlignCenter, "⋮⋮ Pointer V Air Keyboard")
+        # Swipe Progress Meter (Top Strip) or Drag Handle
+        if getattr(self.settings.keyboard, "show_swipe_meter", True) and self.swipe_progress > 0.15:
+            meter_w = 140
+            meter_h = 16
+            meter_x = (self.width() - meter_w) / 2
+            meter_y = 4
+            meter_rect = QRectF(meter_x, meter_y, meter_w, meter_h)
+
+            painter.setBrush(QColor(23, 28, 37, 230))
+            painter.setPen(QPen(QColor(BORDER), 1.0))
+            painter.drawRoundedRect(meter_rect, 4, 4)
+
+            fill_w = max(4.0, (meter_w - 4) * min(1.0, self.swipe_progress))
+            fill_color = QColor(BLUE_BRIGHT if self.swipe_progress < 0.90 else AMBER)
+            painter.setBrush(fill_color)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(QRectF(meter_x + 2, meter_y + 2, fill_w, meter_h - 4), 3, 3)
+
+            dir_arrow = {"UP": "▲ UP", "DOWN": "▼ DOWN", "LEFT": "◀ LEFT", "RIGHT": "▶ RIGHT"}.get(self.swipe_direction, self.swipe_direction)
+            painter.setFont(get_ui_font(8, bold=True))
+            painter.setPen(QColor(TEXT_PRIMARY))
+            painter.drawText(meter_rect, Qt.AlignmentFlag.AlignCenter, f"{dir_arrow} {int(self.swipe_progress * 100)}%")
+        else:
+            # Center Drag Handle & Title
+            painter.setFont(get_ui_font(9, bold=True))
+            painter.setPen(QColor(TEXT_DISABLED))
+            handle_rect = QRectF(0, 4, self.width(), 16)
+            painter.drawText(handle_rect, Qt.AlignmentFlag.AlignCenter, "⋮⋮ Pointer V Air Keyboard")
 
         # Header Info Chip: Zone and Row
         painter.setFont(get_ui_font(10, bold=True))
@@ -470,6 +505,26 @@ class FloatingAirKeyboardWidget(QWidget):
             painter.setPen(QColor(TEXT_PRIMARY))
             history_str = " ".join(self.last_typed_history[-5:])
             painter.drawText(184, 26, history_str)
+
+        # Micro Finger Curl Bars (T, I, M, R, P)
+        if getattr(self.settings.keyboard, "show_finger_bars", True):
+            bars_x = self.width() - 325
+            bars_y = 15
+            finger_items = [("T", "thumb"), ("I", "index"), ("M", "middle"), ("R", "ring"), ("P", "pinky")]
+            for idx, (label, fname) in enumerate(finger_items):
+                curl = self.finger_curls.get(fname, 0.0)
+                bx = bars_x + idx * 13
+                # Background track 9x16
+                painter.setBrush(QColor(23, 28, 37))
+                painter.setPen(QPen(QColor(BORDER), 0.8))
+                painter.drawRoundedRect(QRectF(bx, bars_y, 9, 16), 2, 2)
+                # Fill level from bottom up
+                fh = max(0.0, min(14.0, curl * 14.0))
+                if fh > 0.5:
+                    c_fill = QColor(BLUE_BRIGHT) if curl > 0.35 else QColor(70, 95, 130)
+                    painter.setBrush(c_fill)
+                    painter.setPen(Qt.PenStyle.NoPen)
+                    painter.drawRect(QRectF(bx + 1.5, bars_y + 15.0 - fh, 6.0, fh))
 
         # Modifiers on Right
         mod_x = self.width() - 250

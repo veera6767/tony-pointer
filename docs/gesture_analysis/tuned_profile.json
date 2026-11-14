@@ -1,0 +1,21 @@
+{
+  "params": {
+    "double_tap_window_ms": 350.0,
+    "tap_cooldown_ms": 200.0,
+    "pointing_sensitivity": 1.0,
+    "swipe_threshold": 0.28,
+    "ring_sensitivity": 1.25,
+    "pinky_sensitivity": 1.35
+  },
+  "idle_false_clicks": 0,
+  "single_taps_detected": 0,
+  "double_taps_detected": 0,
+  "swipes_detected": 0,
+  "key_taps_detected": {
+    "thumb": 1,
+    "index": 1,
+    "middle": 1,
+    "ring": 0,
+    "pinky": 1
+  }
+}

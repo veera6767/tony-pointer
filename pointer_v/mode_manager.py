@@ -57,6 +57,9 @@ class ModeManager:
         self.last_swipe_time: float = 0.0
         self.hand_returned_to_neutral: bool = True
         self.bounce_active: bool = False
+        self.swipe_progress: float = 0.0
+        self.swipe_direction: str = ""
+        self.keyboard_entry_time: float = 0.0
 
     def get_current_window(self) -> KeyboardWindow:
         return self.layout_manager.get_window(self.active_zone, self.row_idx, self.window_idx)
@@ -76,7 +79,12 @@ class ModeManager:
         else:
             self.mode = AppMode.KEYBOARD if self.mode != AppMode.KEYBOARD else AppMode.POINTER
 
+        if self.mode == AppMode.KEYBOARD:
+            self.keyboard_entry_time = time.perf_counter()
+
         self.neutral_hand_center = None
+        self.swipe_progress = 0.0
+        self.swipe_direction = ""
         self.open_palm_start = None
         self.open_palm_progress = 0.0
         self.fist_start = None
@@ -143,7 +151,10 @@ class ModeManager:
 
                 if elapsed >= hold_target:
                     self.mode = AppMode.KEYBOARD
+                    self.keyboard_entry_time = now
                     self.neutral_hand_center = None
+                    self.swipe_progress = 0.0
+                    self.swipe_direction = ""
                     self.open_palm_start = None
                     self.open_palm_progress = 0.0
                     return self.mode, 1.0
@@ -154,10 +165,8 @@ class ModeManager:
                 self.open_palm_progress = 0.0
 
         elif self.mode == AppMode.KEYBOARD:
-            if is_pointing:
-                self.mode = AppMode.POINTER
-                return self.mode, 0.0
-
+            # Phase D fix: Mode hysteresis - do NOT exit keyboard mode on brief pointing gestures
+            # during typing. Require deliberate fist hold to close keyboard.
             if is_fist:
                 if self.fist_start is None:
                     self.fist_start = now
@@ -180,7 +189,12 @@ class ModeManager:
 
         return self.mode, 0.0
 
-    def evaluate_swipes(self, hand: Optional[HandFrame], tap_in_progress: bool) -> Optional[str]:
+    def evaluate_swipes(
+        self,
+        hand: Optional[HandFrame],
+        tap_in_progress: bool = False,
+        any_finger_curling: bool = False
+    ) -> Optional[str]:
         """
         Detects deliberate whole-hand swipes:
         - Exactly ONE jump per swipe (cooldown ~300ms plus neutral-return)
@@ -188,42 +202,67 @@ class ModeManager:
         - "DOWN": Jumps one row down
         - "LEFT": Hops window left / crosses into MAIN from SYMBOLS
         - "RIGHT": Hops window right / crosses into SYMBOLS from MAIN
-        Works reliably for either hand.
+        Works reliably for either hand. Suppressed if any finger tap or curl is active.
         """
-        if hand is None or self.mode != AppMode.KEYBOARD or tap_in_progress:
+        if hand is None or self.mode != AppMode.KEYBOARD or tap_in_progress or any_finger_curling:
             self.neutral_hand_center = None
+            self.swipe_progress = 0.0
+            self.swipe_direction = ""
             return None
 
         now = time.perf_counter()
         cooldown = self.settings.keyboard.swipe_cooldown_ms / 1000.0
 
-        wrist = hand.get(0)
-        mcp9 = hand.get(9)
-        cx = (wrist.x + mcp9.x) / 2.0
-        cy = (wrist.y + mcp9.y) / 2.0
+        # Phase D fix: Compute true palm centroid from wrist (0) and 4 MCP knuckles (5, 9, 13, 17)
+        # to ensure swipes reflect whole-hand translation, eliminating palm tilt artifacts.
+        p0 = hand.get(0)
+        p5 = hand.get(5)
+        p9 = hand.get(9)
+        p13 = hand.get(13)
+        p17 = hand.get(17)
+        cx = (p0.x + p5.x + p9.x + p13.x + p17.x) / 5.0
+        cy = (p0.y + p5.y + p9.y + p13.y + p17.y) / 5.0
 
-        hand_size = max(0.04, hand.distance_3d(0, 9))
+        hand_size = max(0.04, (hand.distance_3d(0, 9) + hand.distance_3d(5, 17)) / 2.0)
 
         if self.neutral_hand_center is None:
             self.neutral_hand_center = (cx, cy)
             self.hand_returned_to_neutral = True
+            self.swipe_progress = 0.0
+            self.swipe_direction = ""
             return None
 
         dx = (cx - self.neutral_hand_center[0]) / hand_size
         dy = (cy - self.neutral_hand_center[1]) / hand_size
         dist = math.hypot(dx, dy)
+        swipe_threshold = self.settings.keyboard.swipe_threshold
+
+        # Update live swipe progress and direction for HUD feedback
+        if dist > 0.05:
+            self.swipe_progress = min(1.0, dist / max(0.01, swipe_threshold))
+            if abs(dy) > abs(dx):
+                self.swipe_direction = "UP" if dy < 0 else "DOWN"
+            else:
+                self.swipe_direction = "RIGHT" if dx > 0 else "LEFT"
+        else:
+            self.swipe_progress = 0.0
+            self.swipe_direction = ""
 
         # Neutral return detection (< 0.22 hand size or after timeout)
         if dist < 0.22:
             self.hand_returned_to_neutral = True
             self.neutral_hand_center = (cx, cy)
             self.bounce_active = False
+            self.swipe_progress = 0.0
+            self.swipe_direction = ""
             return None
         elif self.last_swipe_time > 0 and (now - self.last_swipe_time) > 0.85:
             # Drift recovery if hand stays in a new resting position
             self.hand_returned_to_neutral = True
             self.neutral_hand_center = (cx, cy)
             self.bounce_active = False
+            self.swipe_progress = 0.0
+            self.swipe_direction = ""
             return None
 
         if not self.hand_returned_to_neutral or (now - self.last_swipe_time < cooldown):

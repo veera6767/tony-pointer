@@ -1,6 +1,6 @@
 [project]
 name = "pointer-v"
-version = "2.0.4"
+version = "2.0.5"
 description = "Hardware-level hand gesture PC controller with MediaPipe and PySide6"
 requires-python = ">=3.12"
 

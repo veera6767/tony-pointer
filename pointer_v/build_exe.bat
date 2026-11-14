@@ -2,7 +2,7 @@
 setlocal
 
 echo ========================================================
-echo    POINTER V - STANDALONE EXECUTABLE BUILDER (v2.0.4)
+echo    POINTER V - STANDALONE EXECUTABLE BUILDER (v2.0.5)
 echo ========================================================
 echo.
 

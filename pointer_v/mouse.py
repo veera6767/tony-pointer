@@ -347,25 +347,39 @@ class MouseController:
             self.is_left_down = False
             self.left_down_time = 0.0
 
-    def click(self, x: Optional[int] = None, y: Optional[int] = None):
+    def click(self, x: Optional[int] = None, y: Optional[int] = None) -> bool:
         """Standard left click (Down then Up)."""
         if self.is_yielding:
-            return
+            return False
         if x is not None and y is not None:
             self.move_to(x, y)
         self._send_input(flags=MOUSEEVENTF_LEFTDOWN, action_name="CLICK_DOWN")
         time.sleep(0.015)
         self._send_input(flags=MOUSEEVENTF_LEFTUP, action_name="CLICK_UP")
+        return True
 
-    def double_click(self, x: Optional[int] = None, y: Optional[int] = None):
-        """Rapid double left click."""
+    def double_click(self, x: Optional[int] = None, y: Optional[int] = None) -> bool:
+        """Rapid double left click.
+
+        FIX (f): counts as ONE logical action in the circuit breaker (not two),
+        so two double-clicks + one single click does not trip the breaker.
+        """
         if self.is_yielding:
-            return
+            return False
         if x is not None and y is not None:
             self.move_to(x, y)
-        self.click()
+        # Record as a single circuit-breaker event before sending
+        if self.record_click_and_check_breaker(False, x or self.last_pos[0], y or self.last_pos[1]):
+            return False
+        # Send two physical clicks without the breaker recording each one
+        self._send_input(flags=MOUSEEVENTF_LEFTDOWN, action_name="DBLCLICK_1_DOWN")
+        time.sleep(0.015)
+        self._send_input(flags=MOUSEEVENTF_LEFTUP, action_name="DBLCLICK_1_UP")
         time.sleep(0.045)
-        self.click()
+        self._send_input(flags=MOUSEEVENTF_LEFTDOWN, action_name="DBLCLICK_2_DOWN")
+        time.sleep(0.015)
+        self._send_input(flags=MOUSEEVENTF_LEFTUP, action_name="DBLCLICK_2_UP")
+        return True
 
     def right_click(self, x: Optional[int] = None, y: Optional[int] = None):
         """Right click for context menus."""

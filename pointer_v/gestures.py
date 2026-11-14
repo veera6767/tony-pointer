@@ -59,11 +59,15 @@ class GestureEngine:
 
         # Air-tap detection variables
         self.index_angle_history: Deque[Tuple[float, float]] = collections.deque(maxlen=15)
+        self.pinch_history: Deque[Tuple[float, float]] = collections.deque(maxlen=15)
         self.last_tap_time: float = 0.0
         self.tap_start_time: float = 0.0
         self.pending_single_tap: bool = False
         self.tap_frozen_pos: Optional[Tuple[int, int]] = None
         self.finger_curls: Dict[str, float] = {}
+        # Defect-a fix: track that the finger returned to extension after tap 1 before
+        # allowing tap 2 to be detected (prevents same trajectory from double-firing).
+        self._tap_needs_reextension: bool = False
 
         # Two-finger hold (Right Click)
         self.two_finger_start_time: Optional[float] = None
@@ -224,15 +228,21 @@ class GestureEngine:
         A swift curl-and-release flexure of the index finger.
         Requires genuine flexion (min_angle < 130 deg) and positive extension rebound (> 140 deg),
         never firing from a still hand or camera landmark jitter.
+
+        Defect-a fix: When waiting for tap 2 of a potential double tap, the standard 220 ms
+        cooldown is replaced by a re-extension gate: the index finger must visibly return to
+        extension (≥ 145 deg) between the two taps.  This eliminates both the false double-fire
+        (same curl trajectory visible in the 300 ms history) and the dropped-second-tap problem
+        (220 ms cooldown blocking natural 200-350 ms second taps).
         """
         if hand is None or getattr(hand, "confidence", 1.0) < 0.50:
             return False
 
-        if len(self.index_angle_history) < 5:
+        if len(self.index_angle_history) < 3:
             return False
 
         angles = [a for t, a in self.index_angle_history if now - t <= 0.30]
-        if len(angles) < 4:
+        if len(angles) < 3:
             return False
 
         min_angle = min(angles)
@@ -250,12 +260,62 @@ class GestureEngine:
         flexion_occurred = min_angle < req_flex and angle_delta >= req_delta
         rebounded = current_angle > (min_angle + 14.0) and current_angle > req_rebound
 
-        cooldown_s = max(0.12, self.settings.gestures.tap_cooldown_ms / 1000.0)
-        if flexion_occurred and rebounded and (now - self.last_tap_time > cooldown_s):
-            self.last_tap_time = now
-            return True
+        if not (flexion_occurred and rebounded):
+            return False
 
-        return False
+        cooldown_s = max(0.12, self.settings.gestures.tap_cooldown_ms / 1000.0)
+        double_win = self.settings.gestures.double_tap_window_ms / 1000.0
+        in_double_tap_window = self.pending_single_tap and (now - self.tap_start_time <= double_win)
+
+        # Phase C fix: NO cooldown between the two taps of a double tap.
+        # Cooldown only applies outside the double-tap window (after a completed single/double click).
+        if not in_double_tap_window:
+            if now - self.last_tap_time <= cooldown_s:
+                return False
+
+        self.last_tap_time = now
+        return True
+
+    def detect_pinch_tap(self, hand: HandFrame, now: float) -> bool:
+        """
+        Phase C alternative click gesture:
+        Detects a rapid thumb-index pinch-and-release tap.
+        Pinch dist < pinch_threshold, followed by immediate release > pinch_threshold * 1.35.
+        """
+        if hand is None or getattr(hand, "confidence", 1.0) < 0.50:
+            return False
+
+        pinch_dist = hand.distance_3d(4, 8)
+        self.pinch_history.append((now, pinch_dist))
+
+        if len(self.pinch_history) < 3:
+            return False
+
+        recent = [d for t, d in self.pinch_history if now - t <= 0.30]
+        if len(recent) < 3:
+            return False
+
+        min_dist = min(recent)
+        thresh = getattr(self.settings.gestures, "pinch_threshold", 0.045)
+        curr_dist = recent[-1]
+
+        # Must dip into contact (< thresh) and release open (> thresh * 1.35)
+        pinched = min_dist < thresh
+        released = curr_dist > (thresh * 1.35)
+
+        if not (pinched and released):
+            return False
+
+        cooldown_s = max(0.12, self.settings.gestures.tap_cooldown_ms / 1000.0)
+        double_win = self.settings.gestures.double_tap_window_ms / 1000.0
+        in_double_tap_window = self.pending_single_tap and (now - self.tap_start_time <= double_win)
+
+        if not in_double_tap_window:
+            if now - self.last_tap_time <= cooldown_s:
+                return False
+
+        self.last_tap_time = now
+        return True
 
     def process(
         self,
@@ -588,6 +648,7 @@ class GestureEngine:
             if not in_ar or not confidence_ok or click_mode == "off":
                 self.pending_single_tap = False
                 self.tap_frozen_pos = None
+                self._tap_needs_reextension = False
 
             # Freeze cursor during double-tap window to prevent jitter while tapping
             if (now - self.tap_start_time <= double_tap_window_s) and self.tap_frozen_pos:
@@ -596,12 +657,16 @@ class GestureEngine:
 
             if self.pending_single_tap and (now - self.tap_start_time > double_tap_window_s):
                 self.pending_single_tap = False
+                self.last_tap_time = now
+                self.index_angle_history.clear()
+                self.index_angle_history.append((now, flex_angle))
                 if self.settings.gestures.single_click_enabled and click_mode in ("left_only", "all"):
                     result["action"] = GestureAction.SINGLE_CLICK.value
                     if self.tap_frozen_pos:
                         result["cursor_x"] = self.tap_frozen_pos[0]
                         result["cursor_y"] = self.tap_frozen_pos[1]
                     result["status_text"] = "SINGLE CLICK"
+                    result["log_detail"] = f"Single click emitted (window expired at {int(double_tap_window_s*1000)}ms)"
                     self.prev_pose = pose
                     return result
 
@@ -623,26 +688,48 @@ class GestureEngine:
                 self.dwell_start_time = None
                 self.dwell_progress = 0.0
 
-            # Air Tap Clicks
+            # Air Tap Clicks (Index air tap or Thumb-index pinch tap)
             can_tap = in_ar and confidence_ok and click_mode in ("left_only", "all")
             if can_tap:
-                tap_detected = self.detect_air_tap(hand, now)
+                click_style = getattr(self.settings.gestures, "click_gesture_style", "index_tap")
+                if click_style == "pinch":
+                    tap_detected = self.detect_pinch_tap(hand, now)
+                else:
+                    tap_detected = self.detect_air_tap(hand, now)
+
                 if tap_detected:
+                    # FIX (d): Use pre-tap cursor position (150 ms lookback) for the frozen
+                    # position so the cursor is at the resting spot, not mid-curl.
                     stable_pos = self.history_buffer.get_position_at_lookback(150.0)
-                    if stable_pos:
-                        result["cursor_x"] = int(stable_pos[0])
-                        result["cursor_y"] = int(stable_pos[1])
+                    pre_tap_x = int(stable_pos[0]) if stable_pos else result["cursor_x"]
+                    pre_tap_y = int(stable_pos[1]) if stable_pos else result["cursor_y"]
 
                     if self.pending_single_tap and (now - self.tap_start_time <= double_tap_window_s):
+                        # Tap 2: emit double click at the SAME frozen position as tap 1
                         self.pending_single_tap = False
+                        self.index_angle_history.clear()
+                        self.index_angle_history.append((now, flex_angle))
+                        self.pinch_history.clear()
+                        inter_ms = int((now - self.tap_start_time) * 1000)
                         result["action"] = GestureAction.DOUBLE_CLICK.value
-                        result["status_text"] = "DOUBLE CLICK (AIR TAP)"
+                        if self.tap_frozen_pos:
+                            result["cursor_x"] = self.tap_frozen_pos[0]
+                            result["cursor_y"] = self.tap_frozen_pos[1]
+                        result["status_text"] = f"DOUBLE CLICK ({click_style.upper()})"
+                        result["log_detail"] = f"Tap 2 detected ({inter_ms}ms later) -> DOUBLE_CLICK sent at ({result['cursor_x']}, {result['cursor_y']})"
                         self.prev_pose = pose
                         return result
                     else:
+                        # Tap 1: start the double-tap window; freeze at pre-tap position
                         self.pending_single_tap = True
                         self.tap_start_time = now
-                        self.tap_frozen_pos = (result["cursor_x"], result["cursor_y"])
+                        self.tap_frozen_pos = (pre_tap_x, pre_tap_y)
+                        self.index_angle_history.clear()
+                        self.index_angle_history.append((now, flex_angle))
+                        self.pinch_history.clear()
+                        result["cursor_x"] = pre_tap_x
+                        result["cursor_y"] = pre_tap_y
+                        result["log_detail"] = f"Tap 1 detected ({'pinch' if click_style == 'pinch' else f'angle={flex_angle:.1f}°'}) · Window open {int(double_tap_window_s*1000)}ms"
 
             result["action"] = GestureAction.MOVE.value
             if not in_ar:

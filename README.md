@@ -46,7 +46,7 @@
 ## Quick Start for Users
 
 ### Option A: Windows Installer (Recommended)
-1. Download `PointerV-Setup-2.0.4.exe` from [Releases](https://github.com/veera6767/tony-pointer/releases).
+1. Download `PointerV-Setup-2.0.5.exe` from [Releases](https://github.com/veera6767/tony-pointer/releases).
 2. Run the installer. You can optionally enable **Start with Windows** and create a Desktop shortcut.
 3. Launch **Pointer V** from your Start Menu.
 4. Position your webcam at chest or eye height and follow the interactive 7-step onboarding tutorial.
@@ -55,7 +55,7 @@
 > **Windows Defender / SmartScreen**: Since this is a newly released independent open-source binary, Windows SmartScreen may show an informational prompt ("Windows protected your PC"). Click **More info** -> **Run anyway**. You can verify the official SHA-256 checksums in the release notes.
 
 ### Option B: Recipient Standalone Setup (`share/`)
-- A single standalone setup executable is pre-packaged in `share/PointerV-Setup-2.0.4.exe` alongside `share/README_FIRST.txt` and SHA-256 checksums in `share/PointerV-Setup-2.0.4.exe.sha256`.
+- A single standalone setup executable is pre-packaged in `share/PointerV-Setup-2.0.5.exe` alongside `share/README_FIRST.txt` and SHA-256 checksums in `share/PointerV-Setup-2.0.5.exe.sha256`.
 - Includes VC++ 2015-2022 redistributable verification, single-instance detection, uninstaller, and desktop shortcut.
 - Installs by default per-user to `%LOCALAPPDATA%\Programs\Pointer V` (no administrator password required).
 
@@ -64,7 +64,7 @@
 ## Known Issues & Release Notes
 
 > [!NOTE]
-> **v2.0.4 Zero-Freeze Engine & Keyboard HUD Fix**: Build v2.0.4 fixes the open-palm air keyboard freeze, removes hidden widget 62 Hz animation repaints, prevents PiP preview overlap with top-left navigation, corrects ModeChip text clipping, decouples the webcam hardware lifecycle (LED stays OFF when inactive), and introduces native Win32 `RegisterHotKey` hooks with emergency panic disengage (`Ctrl+Alt+Shift+Esc`).
+> **v2.0.5 Gesture Reliability & Air Keyboard Overhaul**: Build v2.0.5 fixes double-click timing gaps (200–400ms) by removing inter-tap cooldowns within the double-tap window, introduces a 150ms lookback cursor freeze held for 400ms for pixel-perfect double clicks, adds a 5-point rigid palm centroid and hand-size normalization for whole-hand swipes, prevents mid-typing keyboard collapse with mode hysteresis, adds live HUD swipe progress meters and micro finger curl bars, and implements alternative thumb-pinch typing.
 
 ---
 
@@ -100,7 +100,7 @@ This runs headless verification without requiring a webcam, writes a status repo
 ---
 
 ### Option C: Portable ZIP Package
-1. Download `PointerV-Portable-2.0.4.zip`.
+1. Download `PointerV-Portable-2.0.5.zip`.
 2. Extract the folder anywhere on your PC.
 3. Run `PointerV.exe`. No installation, Python setup, or administrator privileges required.
 
@@ -141,7 +141,7 @@ pytest tests -v
 cd pointer_v
 build_exe.bat
 
-:: Build Inno Setup Windows installer (output: installers\Output\PointerV-Setup-2.0.4.exe)
+:: Build Inno Setup Windows installer (output: installers\Output\PointerV-Setup-2.0.5.exe)
 cd ..\installers
 build_installer.bat
 ```

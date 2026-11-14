@@ -8,18 +8,75 @@ STRICT PRIVACY: Never shows or logs typed characters or key names.
 import time
 from typing import Dict
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
+    QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QVBoxLayout, QWidget
 )
 
-from recorder import LandmarkRecorder
+from recorder import GUIDED_STEPS, GuidedSessionRecorder, LandmarkRecorder
 from theme import (
     AMBER, BG1_PANELS, BG2_CARDS, BLUE, BORDER, BORDER_STRONG, CYAN, GREEN, RADIUS_CONTROL, RADIUS_PANEL,
     RED, TEXT_PRIMARY, TEXT_SECONDARY, VIOLET,
     get_mono_font, get_ui_font
 )
+
+
+class DoubleClickTargetBox(QFrame):
+    """
+    Interactive test target that captures native Windows WM_LBUTTONDBLCLK
+    and single clicks, measuring exact inter-click intervals.
+    """
+
+    def __init__(self, on_event_callback=None, parent=None):
+        super().__init__(parent)
+        self.on_event_callback = on_event_callback
+        self.setFixedSize(280, 75)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setStyleSheet(
+            f"background-color: {BG2_CARDS}; border: 2px dashed {BORDER_STRONG}; "
+            f"border-radius: {RADIUS_PANEL}px;"
+        )
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(2)
+
+        self.lbl_main = QLabel("Double-Click Test Target")
+        self.lbl_main.setFont(get_ui_font(11, bold=True))
+        self.lbl_main.setAlignment(Qt.AlignCenter)
+        self.lbl_main.setStyleSheet(f"color: {TEXT_PRIMARY};")
+        layout.addWidget(self.lbl_main)
+
+        self.lbl_sub = QLabel("Air tap twice or click here")
+        self.lbl_sub.setFont(get_ui_font(9))
+        self.lbl_sub.setAlignment(Qt.AlignCenter)
+        self.lbl_sub.setStyleSheet(f"color: {TEXT_SECONDARY};")
+        layout.addWidget(self.lbl_sub)
+
+    def mousePressEvent(self, event):
+        if self.on_event_callback:
+            self.on_event_callback(is_double=False)
+        super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if self.on_event_callback:
+            self.on_event_callback(is_double=True)
+        self.setStyleSheet(
+            f"background-color: #1a3d24; border: 2px solid {GREEN}; "
+            f"border-radius: {RADIUS_PANEL}px;"
+        )
+        self.lbl_main.setText("✨ WM_LBUTTONDBLCLK VERIFIED!")
+        self.lbl_main.setStyleSheet(f"color: {GREEN}; font-weight: bold;")
+        QTimer.singleShot(700, self._reset_display)
+        super().mouseDoubleClickEvent(event)
+
+    def _reset_display(self):
+        self.setStyleSheet(
+            f"background-color: {BG2_CARDS}; border: 2px dashed {BORDER_STRONG}; "
+            f"border-radius: {RADIUS_PANEL}px;"
+        )
+        self.lbl_main.setText("Double-Click Test Target")
+        self.lbl_main.setStyleSheet(f"color: {TEXT_PRIMARY}; font-weight: bold;")
 
 
 class DeveloperPage(QWidget):
@@ -46,6 +103,18 @@ class DeveloperPage(QWidget):
         self.mouse = mouse_controller
         self.keyboard_out = keyboard_output
 
+        # Phase B Guided Session Recorder
+        self.guided_recorder = GuidedSessionRecorder(
+            on_step_change=self._on_guided_step_change,
+            on_complete=self._on_guided_complete,
+        )
+
+        # Phase C Double-Click verification counters
+        self.dbl_single_clicks = 0
+        self.dbl_double_clicks = 0
+        self.dbl_last_press_time = 0.0
+        self.dbl_last_interval_ms = 0.0
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(14)
@@ -59,10 +128,16 @@ class DeveloperPage(QWidget):
         # 2. End-to-End Self Test Card
         self._build_self_test_card(layout)
 
-        # 3. Live Pipeline Diagnostics Panel
+        # 3. Phase C: Double-Click Verification Target Card
+        self._build_double_click_test_card(layout)
+
+        # 4. Phase B: Guided Hand Calibration Recorder Card
+        self._build_guided_recorder_card(layout)
+
+        # 5. Live Pipeline Diagnostics Panel
         self._build_diagnostics_panel(layout)
 
-        # 4. Landmark Recording & Replay Card
+        # 6. Landmark Recording & Replay Card
         self._build_recorder_card(layout)
 
         layout.addStretch()
@@ -127,6 +202,127 @@ class DeveloperPage(QWidget):
         self.test_result_lbl.setFont(get_mono_font(10))
         self.test_result_lbl.setStyleSheet(f"color: {TEXT_SECONDARY};")
         layout.addWidget(self.test_result_lbl)
+
+        parent_layout.addWidget(card)
+
+    def _build_double_click_test_card(self, parent_layout):
+        card = QFrame()
+        card.setStyleSheet(f"background-color: {BG1_PANELS}; border: 1px solid {BORDER}; border-radius: {RADIUS_PANEL}px;")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(10)
+
+        header_layout = QHBoxLayout()
+        title = QLabel("Double-Click Verification Target (Phase C)")
+        title.setFont(get_ui_font(12, bold=True))
+        title.setStyleSheet(f"color: {TEXT_PRIMARY};")
+        header_layout.addWidget(title)
+        header_layout.addStretch()
+
+        self.btn_sim_dblclick = QPushButton("▶ Test Double-Click Output")
+        self.btn_sim_dblclick.setStyleSheet(f"background-color: {BLUE}; color: #FFFFFF; font-weight: 600; padding: 6px 14px;")
+        self.btn_sim_dblclick.clicked.connect(self._simulate_double_click)
+        header_layout.addWidget(self.btn_sim_dblclick)
+
+        self.btn_reset_dbl = QPushButton("Reset Counters")
+        self.btn_reset_dbl.setStyleSheet(f"background-color: {BG2_CARDS}; border: 1px solid {BORDER_STRONG}; color: {TEXT_PRIMARY}; padding: 6px 10px;")
+        self.btn_reset_dbl.clicked.connect(self._reset_dbl_counters)
+        header_layout.addWidget(self.btn_reset_dbl)
+        layout.addLayout(header_layout)
+
+        row = QHBoxLayout()
+        self.dbl_target_box = DoubleClickTargetBox(on_event_callback=self._on_target_click)
+        row.addWidget(self.dbl_target_box)
+
+        v_info = QVBoxLayout()
+        self.lbl_dbl_stats = QLabel("Single Clicks: 0  ·  Double Clicks: 0")
+        self.lbl_dbl_stats.setFont(get_ui_font(11, bold=True))
+        self.lbl_dbl_stats.setStyleSheet(f"color: {CYAN};")
+        v_info.addWidget(self.lbl_dbl_stats)
+
+        self.lbl_dbl_interval = QLabel("Inter-click Interval: -- ms (Windows limit: 500 ms)")
+        self.lbl_dbl_interval.setFont(get_mono_font(10))
+        self.lbl_dbl_interval.setStyleSheet(f"color: {TEXT_SECONDARY};")
+        v_info.addWidget(self.lbl_dbl_interval)
+
+        self.lbl_dbl_feedback = QLabel("Status: Ready to receive real air double-taps.")
+        self.lbl_dbl_feedback.setFont(get_ui_font(9))
+        self.lbl_dbl_feedback.setStyleSheet(f"color: {TEXT_SECONDARY};")
+        v_info.addWidget(self.lbl_dbl_feedback)
+
+        row.addLayout(v_info, stretch=1)
+        layout.addLayout(row)
+        parent_layout.addWidget(card)
+
+    def _build_guided_recorder_card(self, parent_layout):
+        card = QFrame()
+        card.setStyleSheet(f"background-color: {BG1_PANELS}; border: 1px solid {BORDER}; border-radius: {RADIUS_PANEL}px;")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(10)
+
+        header_layout = QHBoxLayout()
+        title = QLabel("Guided Hand Calibration Recorder (Phase B)")
+        title.setFont(get_ui_font(12, bold=True))
+        title.setStyleSheet(f"color: {TEXT_PRIMARY};")
+        header_layout.addWidget(title)
+        header_layout.addStretch()
+
+        self.btn_guided_start = QPushButton("▶ Start Guided Session (17 Steps)")
+        self.btn_guided_start.setStyleSheet(f"background-color: {GREEN}; color: #FFFFFF; font-weight: 600; padding: 6px 14px;")
+        self.btn_guided_start.clicked.connect(self._start_guided_session)
+        header_layout.addWidget(self.btn_guided_start)
+
+        self.btn_guided_next = QPushButton("Next Step >>")
+        self.btn_guided_next.setStyleSheet(f"background-color: {BG2_CARDS}; border: 1px solid {BORDER_STRONG}; color: {TEXT_PRIMARY}; padding: 6px 12px;")
+        self.btn_guided_next.setEnabled(False)
+        self.btn_guided_next.clicked.connect(self._next_guided_step)
+        header_layout.addWidget(self.btn_guided_next)
+
+        self.btn_guided_cancel = QPushButton("Cancel")
+        self.btn_guided_cancel.setStyleSheet(f"background-color: {BG2_CARDS}; border: 1px solid {BORDER_STRONG}; color: {RED}; padding: 6px 10px;")
+        self.btn_guided_cancel.setEnabled(False)
+        self.btn_guided_cancel.clicked.connect(self._cancel_guided_session)
+        header_layout.addWidget(self.btn_guided_cancel)
+        layout.addLayout(header_layout)
+
+        # Step Prompt Banner
+        self.lbl_guided_step_title = QLabel("Step 1 of 17: Idle Pointing (20s)")
+        self.lbl_guided_step_title.setFont(get_ui_font(12, bold=True))
+        self.lbl_guided_step_title.setStyleSheet(f"color: {CYAN};")
+        layout.addWidget(self.lbl_guided_step_title)
+
+        self.lbl_guided_prompt = QLabel(
+            "Hold your hand in normal pointing pose (index extended, other fingers curled). "
+            "Hold still or move gently. Do not click."
+        )
+        self.lbl_guided_prompt.setFont(get_ui_font(10))
+        self.lbl_guided_prompt.setStyleSheet(f"color: {TEXT_PRIMARY};")
+        self.lbl_guided_prompt.setWordWrap(True)
+        layout.addWidget(self.lbl_guided_prompt)
+
+        # Progress bar & countdown
+        p_row = QHBoxLayout()
+        self.guided_progress_bar = QProgressBar()
+        self.guided_progress_bar.setFixedHeight(12)
+        self.guided_progress_bar.setRange(0, 100)
+        self.guided_progress_bar.setValue(0)
+        self.guided_progress_bar.setStyleSheet(
+            f"QProgressBar {{ background-color: {BG2_CARDS}; border: 1px solid {BORDER}; border-radius: 6px; }} "
+            f"QProgressBar::chunk {{ background-color: {CYAN}; border-radius: 5px; }}"
+        )
+        p_row.addWidget(self.guided_progress_bar, stretch=1)
+
+        self.lbl_guided_countdown = QLabel("Remaining: 20.0s")
+        self.lbl_guided_countdown.setFont(get_mono_font(10))
+        self.lbl_guided_countdown.setStyleSheet(f"color: {TEXT_SECONDARY};")
+        p_row.addWidget(self.lbl_guided_countdown)
+        layout.addLayout(p_row)
+
+        self.lbl_guided_file = QLabel("Recordings stored locally in: %APPDATA%\\PointerV\\recordings\\")
+        self.lbl_guided_file.setFont(get_mono_font(9))
+        self.lbl_guided_file.setStyleSheet(f"color: {TEXT_SECONDARY};")
+        layout.addWidget(self.lbl_guided_file)
 
         parent_layout.addWidget(card)
 
@@ -287,6 +483,15 @@ class DeveloperPage(QWidget):
         raw_h = telem.get("raw_hand")
         handedness = getattr(raw_h, "handedness", "Unknown") if raw_h else "None"
         self.diag_handedness.setText(str(handedness))
+
+        # Phase B: Feed guided session recorder if active
+        if hasattr(self, "guided_recorder") and self.guided_recorder.is_active:
+            self.guided_recorder.record_frame(raw_h, fps=fps)
+            st = self.guided_recorder.get_status()
+            self.guided_progress_bar.setValue(int(st["progress"] * 100))
+            self.lbl_guided_countdown.setText(f"Remaining: {st['remaining_s']:.1f}s")
+            self.lbl_guided_step_title.setText(f"Step {st['step_idx'] + 1} of {st['total_steps']}: {st['title']}")
+            self.lbl_guided_prompt.setText(st["prompt"])
 
         pose = telem.get("pose", "UNKNOWN")
         self.diag_pose.setText(str(pose))
@@ -486,3 +691,87 @@ class DeveloperPage(QWidget):
         if src:
             self.replay_file_requested.emit(src)
             QMessageBox.information(self, "Replay Loaded", f"File loaded:\n{src}\nReplay active.")
+
+    def _on_target_click(self, is_double: bool):
+        now = time.perf_counter()
+        if is_double:
+            self.dbl_double_clicks += 1
+            if self.dbl_last_press_time > 0:
+                self.dbl_last_interval_ms = (now - self.dbl_last_press_time) * 1000.0
+            self.lbl_dbl_stats.setText(
+                f"Single Clicks: {self.dbl_single_clicks}  ·  Double Clicks: {self.dbl_double_clicks}"
+            )
+            self.lbl_dbl_interval.setText(
+                f"Inter-click Interval: {self.dbl_last_interval_ms:.1f} ms (Limit: 500 ms) ✓"
+            )
+            self.lbl_dbl_feedback.setText("Status: Native WM_LBUTTONDBLCLK verified successfully!")
+            self.lbl_dbl_feedback.setStyleSheet(f"color: {GREEN}; font-weight: bold;")
+        else:
+            self.dbl_single_clicks += 1
+            if self.dbl_last_press_time > 0:
+                gap = (now - self.dbl_last_press_time) * 1000.0
+                self.lbl_dbl_interval.setText(f"Inter-click Interval: {gap:.1f} ms")
+            self.dbl_last_press_time = now
+            self.lbl_dbl_stats.setText(
+                f"Single Clicks: {self.dbl_single_clicks}  ·  Double Clicks: {self.dbl_double_clicks}"
+            )
+
+    def _simulate_double_click(self):
+        """Dispatches an artificial double-click directly at the target widget."""
+        if not self.mouse:
+            return
+        pt = self.dbl_target_box.mapToGlobal(QPoint(140, 38))
+        self.mouse.double_click(pt.x(), pt.y())
+
+    def _reset_dbl_counters(self):
+        self.dbl_single_clicks = 0
+        self.dbl_double_clicks = 0
+        self.dbl_last_press_time = 0.0
+        self.dbl_last_interval_ms = 0.0
+        self.lbl_dbl_stats.setText("Single Clicks: 0  ·  Double Clicks: 0")
+        self.lbl_dbl_interval.setText("Inter-click Interval: -- ms (Windows limit: 500 ms)")
+        self.lbl_dbl_feedback.setText("Status: Counters reset. Ready for clicks.")
+        self.lbl_dbl_feedback.setStyleSheet(f"color: {TEXT_SECONDARY};")
+
+    def _start_guided_session(self):
+        saved_file = self.guided_recorder.start_session()
+        self.btn_guided_start.setEnabled(False)
+        self.btn_guided_next.setEnabled(True)
+        self.btn_guided_cancel.setEnabled(True)
+        self.lbl_guided_file.setText(f"Recording to: {saved_file}")
+        self.lbl_guided_file.setStyleSheet(f"color: {GREEN}; font-weight: bold;")
+
+    def _next_guided_step(self):
+        self.guided_recorder.next_step()
+
+    def _cancel_guided_session(self):
+        self.guided_recorder.cancel_session()
+        self.btn_guided_start.setEnabled(True)
+        self.btn_guided_next.setEnabled(False)
+        self.btn_guided_cancel.setEnabled(False)
+        self.lbl_guided_step_title.setText("Guided Session Cancelled")
+        self.lbl_guided_countdown.setText("Remaining: --")
+        self.guided_progress_bar.setValue(0)
+
+    def _on_guided_step_change(self, step_idx, step):
+        self.lbl_guided_step_title.setText(f"Step {step_idx + 1} of {len(GUIDED_STEPS)}: {step['title']}")
+        self.lbl_guided_prompt.setText(step["prompt"])
+        self.lbl_guided_countdown.setText(f"Remaining: {step['duration_s']:.1f}s")
+        self.guided_progress_bar.setValue(0)
+
+    def _on_guided_complete(self, saved_path, summary):
+        self.btn_guided_start.setEnabled(True)
+        self.btn_guided_next.setEnabled(False)
+        self.btn_guided_cancel.setEnabled(False)
+        self.lbl_guided_step_title.setText("Guided Recording Session Complete! ✓")
+        self.lbl_guided_countdown.setText(f"Avg FPS: {summary.get('avg_fps', 0.0):.1f}")
+        self.guided_progress_bar.setValue(100)
+        QMessageBox.information(
+            self,
+            "Guided Calibration Recorded",
+            f"17-step guided session successfully recorded!\n\n"
+            f"Frames: {summary.get('total_frames', 0)}\n"
+            f"Achieved FPS: {summary.get('avg_fps', 0.0):.1f}\n"
+            f"File: {saved_path}\n\n"
+            f"Run scripts/analyze_recordings.py to view comprehensive analysis and metrics.",
+        )

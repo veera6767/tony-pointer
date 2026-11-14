@@ -17,5 +17,7 @@ share/*.exe
 .venv/
 venv/
 .ruff_cache/
+recordings/
+*.jsonl
 
 

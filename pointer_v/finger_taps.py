@@ -7,6 +7,7 @@ plus an inter-finger neighbor lockout to prevent false cross-fires.
 """
 
 import collections
+import math
 import time
 from typing import Dict, Optional, Tuple
 
@@ -49,10 +50,50 @@ class FingerTapDetector:
         self.last_repeat_time: Dict[str, float] = {f[0]: 0.0 for f in self.fingers}
         self.last_repeat_time["thumb"] = 0.0
 
+        # Adaptive resting baselines per finger (updated when extended)
+        self.resting_baselines: Dict[str, float] = {f[0]: 165.0 for f in self.fingers}
+        self.resting_baselines["thumb"] = 155.0
+
+        # Historical palm positions for velocity calculation: (timestamp, cx, cy)
+        self.palm_history: collections.deque = collections.deque(maxlen=10)
+
+        # Pinch typing histories: finger_name -> deque of (timestamp, pinch_dist)
+        self.pinch_typing_history: Dict[str, collections.deque] = {
+            f[0]: collections.deque(maxlen=15) for f in self.fingers
+        }
+
         # Debug curl values for UI sliders and calibration
         self.current_curls: Dict[str, float] = {
             "thumb": 0.0, "index": 0.0, "middle": 0.0, "ring": 0.0, "pinky": 0.0
         }
+
+    def is_curling_fast(self, threshold_delta: float = 14.0) -> bool:
+        """Checks if any typing finger is currently undergoing rapid curl flexion (> threshold within 150ms)."""
+        now = time.perf_counter()
+        for f_name, _, _, _, _ in self.fingers:
+            hist = self.history.get(f_name)
+            if not hist:
+                continue
+            recent = [entry for entry in hist if (now - entry[0]) <= 0.15]
+            if len(recent) >= 2:
+                angles = [r[1] for r in recent]
+                if (max(angles) - min(angles)) >= threshold_delta:
+                    return True
+        return False
+
+    def is_palm_moving_fast(self, now: float, speed_threshold: float = 0.85) -> bool:
+        """Checks if palm translation speed (normalized hand units / sec) exceeds threshold."""
+        recent = [entry for entry in self.palm_history if (now - entry[0]) <= 0.15]
+        if len(recent) >= 2:
+            dt = recent[-1][0] - recent[0][0]
+            if dt > 0.02:
+                dx = recent[-1][1] - recent[0][1]
+                dy = recent[-1][2] - recent[0][2]
+                dist = math.hypot(dx, dy)
+                speed = dist / dt
+                if speed > speed_threshold:
+                    return True
+        return False
 
     def compute_curls(self, hand: Optional[HandFrame]) -> Dict[str, float]:
         """Calculates normalized curl metrics (0.0 = straight, 1.0 = fully curled) for all 5 fingers."""
@@ -67,7 +108,11 @@ class FingerTapDetector:
         self.current_curls["thumb"] = thumb_curl
         return dict(self.current_curls)
 
-    def process(self, hand: Optional[HandFrame]) -> Tuple[Optional[str], bool, Dict[str, float]]:
+    def process(
+        self,
+        hand: Optional[HandFrame],
+        keyboard_entry_time: float = 0.0,
+    ) -> Tuple[Optional[str], bool, Dict[str, float]]:
         """
         Evaluates frame for finger taps or hold-repeats.
         Returns:
@@ -83,82 +128,133 @@ class FingerTapDetector:
         # Measure hand scale for distance normalization (wrist 0 to middle MCP 9)
         hand_scale = max(0.04, hand.distance_3d(0, 9))
 
+        # Track palm centroid to detect rapid whole-hand translation
+        p0 = hand.get(0)
+        p9 = hand.get(9)
+        cx = (p0.x + p9.x) / 2.0
+        cy = (p0.y + p9.y) / 2.0
+        self.palm_history.append((now, cx / hand_scale, cy / hand_scale))
+
+        # Check suppression conditions: keyboard entry stabilization grace period & fast palm movement
+        in_grace_period = keyboard_entry_time > 0.0 and (now - keyboard_entry_time) < 0.30
+        palm_moving_fast = self.is_palm_moving_fast(now)
+        taps_suppressed = in_grace_period or palm_moving_fast
+
         # 1. Evaluate 4 main typing fingers (Index, Middle, Ring, Pinky)
         detected_event = None
         is_repeat = False
 
         neighbor_lockout = getattr(self.settings.keyboard, "neighbor_lockout_ms", 160.0) / 1000.0
+        cooldown = self.settings.keyboard.tap_cooldown_ms / 1000.0
+        pinch_typing_enabled = getattr(self.settings.keyboard, "thumb_pinch_typing", False)
 
-        for f_name, tip, dip, pip, mcp in self.fingers:
-            # Measure PIP joint angle (180 deg = straight, < 120 deg = curled)
-            pip_angle = hand.angle_deg(mcp, pip, tip)
+        if pinch_typing_enabled:
+            # Alternative typing mode: detect thumb-to-fingertip pinch-and-release
+            for f_name, tip, dip, pip, mcp in self.fingers:
+                norm_pinch_dist = hand.distance_3d(4, tip) / hand_scale
+                p_hist = self.pinch_typing_history[f_name]
+                p_hist.append((now, norm_pinch_dist))
+                self.current_curls[f_name] = max(0.0, min(1.0, (0.40 - norm_pinch_dist) / 0.25))
 
-            # Measure fingertip to wrist distance normalized by hand size
-            norm_tip_dist = hand.distance_3d(0, tip) / hand_scale
+                if len(p_hist) < 3 or taps_suppressed:
+                    continue
+                recent_p = [e for e in p_hist if (now - e[0]) <= 0.25]
+                if len(recent_p) < 3:
+                    continue
+                dists = [e[1] for e in recent_p]
+                min_d = min(dists)
+                curr_d = dists[-1]
 
-            # Record curl value for live debug bar (0.0 = completely straight, 1.0 = fully curled)
-            curl_metric = max(0.0, min(1.0, (170.0 - pip_angle) / 70.0))
-            self.current_curls[f_name] = curl_metric
+                if (
+                    min_d < 0.25
+                    and curr_d > 0.35
+                    and (now - self.last_tap_time[f_name] > cooldown)
+                    and (now - self.last_any_tap_time > neighbor_lockout)
+                    and detected_event is None
+                ):
+                    self.last_tap_time[f_name] = now
+                    self.last_any_tap_time = now
+                    detected_event = f_name
+                    is_repeat = False
+                    p_hist.clear()
+                    p_hist.append((now, norm_pinch_dist))
+                    continue
+        else:
+            for f_name, tip, dip, pip, mcp in self.fingers:
+                # Measure PIP joint angle (180 deg = straight, < 120 deg = curled)
+                pip_angle = hand.angle_deg(mcp, pip, tip)
 
-            # Append to history
-            hist = self.history[f_name]
-            hist.append((now, pip_angle, norm_tip_dist))
+                # Measure fingertip to wrist distance normalized by hand size
+                norm_tip_dist = hand.distance_3d(0, tip) / hand_scale
 
-            if len(hist) < 4:
-                continue
+                # Record curl value for live debug bar (0.0 = completely straight, 1.0 = fully curled)
+                curl_metric = max(0.0, min(1.0, (170.0 - pip_angle) / 70.0))
+                self.current_curls[f_name] = curl_metric
 
-            # Per-finger sensitivity threshold (Ring and Pinky are weaker anatomically)
-            sens_factor = getattr(self.settings.keyboard, f"{f_name}_sensitivity", 1.0)
-            base_threshold = 20.0 / max(0.4, sens_factor)
+                # Adaptive baseline update when finger is relaxed and extended
+                if pip_angle > 140.0:
+                    self.resting_baselines[f_name] = 0.95 * self.resting_baselines[f_name] + 0.05 * pip_angle
 
-            # Check recent trajectory within last 250ms
-            recent = [entry for entry in hist if (now - entry[0]) <= 0.25]
-            if len(recent) < 3:
-                continue
+                # Append to history
+                hist = self.history[f_name]
+                hist.append((now, pip_angle, norm_tip_dist))
 
-            angles = [r[1] for r in recent]
-            min_ang = min(angles)
-            max_ang = max(angles)
-            curr_ang = angles[-1]
+                if len(hist) < 4 or taps_suppressed:
+                    continue
 
-            # A tap is a rapid curl (dip in angle) followed by rebound towards straight (>130 deg)
-            rebounded = (curr_ang > min_ang + 14.0) and (curr_ang > 130.0)
-            angle_delta = max_ang - min_ang
+                # Per-finger sensitivity threshold (Ring and Pinky are weaker anatomically)
+                sens_factor = getattr(self.settings.keyboard, f"{f_name}_sensitivity", 1.0)
+                base_threshold = 20.0 / max(0.4, sens_factor)
 
-            cooldown = self.settings.keyboard.tap_cooldown_ms / 1000.0
+                # Check recent trajectory within last 250ms
+                recent = [entry for entry in hist if (now - entry[0]) <= 0.25]
+                if len(recent) < 3:
+                    continue
 
-            # Tap Trigger (enforcing neighbor lockout so adjacent fingers never double-trigger)
-            if (
-                angle_delta >= base_threshold
-                and rebounded
-                and (now - self.last_tap_time[f_name] > cooldown)
-                and (now - self.last_any_tap_time > neighbor_lockout)
-                and detected_event is None
-            ):
-                self.last_tap_time[f_name] = now
-                self.last_any_tap_time = now
-                detected_event = f_name
-                is_repeat = False
-                self.curl_hold_start[f_name] = None
-                continue
+                angles = [r[1] for r in recent]
+                min_ang = min(angles)
+                max_ang = max(angles)
+                curr_ang = angles[-1]
 
-            # Hold-to-Repeat Trigger (e.g. holding Backspace or Arrows)
-            is_curled = curr_ang < 120.0
-            if is_curled:
-                hold_start = self.curl_hold_start[f_name]
-                if hold_start is None:
-                    self.curl_hold_start[f_name] = now
+                # A tap is a rapid curl (dip in angle) followed by rebound towards straight (>130 deg or near baseline)
+                rebound_target = min(130.0, self.resting_baselines[f_name] - 16.0)
+                rebounded = (curr_ang > min_ang + 14.0) and (curr_ang >= rebound_target)
+                angle_delta = max_ang - min_ang
+
+                # Tap Trigger (enforcing neighbor lockout so adjacent fingers never double-trigger)
+                if (
+                    angle_delta >= base_threshold
+                    and rebounded
+                    and (now - self.last_tap_time[f_name] > cooldown)
+                    and (now - self.last_any_tap_time > neighbor_lockout)
+                    and detected_event is None
+                ):
+                    self.last_tap_time[f_name] = now
+                    self.last_any_tap_time = now
+                    detected_event = f_name
+                    is_repeat = False
+                    self.curl_hold_start[f_name] = None
+                    hist.clear()
+                    hist.append((now, pip_angle, norm_tip_dist))
+                    continue
+
+                # Hold-to-Repeat Trigger (e.g. holding Backspace or Arrows)
+                is_curled = curr_ang < 120.0
+                if is_curled:
+                    hold_start = self.curl_hold_start[f_name]
+                    if hold_start is None:
+                        self.curl_hold_start[f_name] = now
+                    else:
+                        hold_duration = now - hold_start
+                        repeat_delay = self.settings.keyboard.key_repeat_delay_s
+                        repeat_interval = self.settings.keyboard.key_repeat_interval_s
+
+                        if hold_duration >= repeat_delay and (now - self.last_repeat_time[f_name] > repeat_interval):
+                            self.last_repeat_time[f_name] = now
+                            detected_event = f_name
+                            is_repeat = True
                 else:
-                    hold_duration = now - hold_start
-                    repeat_delay = self.settings.keyboard.key_repeat_delay_s
-                    repeat_interval = self.settings.keyboard.key_repeat_interval_s
-
-                    if hold_duration >= repeat_delay and (now - self.last_repeat_time[f_name] > repeat_interval):
-                        self.last_repeat_time[f_name] = now
-                        detected_event = f_name
-                        is_repeat = True
-            else:
-                self.curl_hold_start[f_name] = None
+                    self.curl_hold_start[f_name] = None
 
         # 2. Evaluate Thumb (Space key trigger)
         if self.settings.keyboard.thumb_is_space:
@@ -168,7 +264,7 @@ class FingerTapDetector:
             self.current_curls["thumb"] = thumb_curl
 
             self.thumb_history.append((now, thumb_angle, thumb_dist))
-            if len(self.thumb_history) >= 4 and detected_event is None:
+            if len(self.thumb_history) >= 4 and detected_event is None and not taps_suppressed:
                 recent_thumb = [e for e in self.thumb_history if (now - e[0]) <= 0.25]
                 if len(recent_thumb) >= 3:
                     t_angles = [e[1] for e in recent_thumb]
